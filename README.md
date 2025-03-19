@@ -16,8 +16,8 @@ A React-based web application that converts Excel (.xlsx, .xls) and CSV files in
 
 1. Clone the repository:
    ```
-   git clone https://github.com/YOUR_USERNAME/excel-to-svg-org-chart.git
-   cd excel-to-svg-org-chart
+   git clone https://github.com/donlapidos/Excel-to-SVG-Org-Chart-Converter.git
+   cd Excel-to-SVG-Org-Chart-Converter
    ```
 
 2. Install dependencies:
