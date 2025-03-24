@@ -2,14 +2,17 @@ import React, { useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { OrgChart } from 'd3-org-chart';
 import * as d3 from 'd3';
+import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
 
 const ExcelToSvg = () => {
+  const [file, setFile] = useState(null);
   const [chartData, setChartData] = useState(null);
-  const [selectedFile, setSelectedFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const chartRef = useRef();
-  const containerRef = useRef();
+  const [selectedFormat, setSelectedFormat] = useState('svg'); // Default to SVG
+  const containerRef = useRef(null);
+  const chartRef = useRef(null);
 
   // Color scheme for different levels
   const levelColors = {
@@ -20,20 +23,17 @@ const ExcelToSvg = () => {
     default: '#90caf9' // Default light blue
   };
 
-  // Helper function to find the actual column name regardless of case
+  // Helper function to find column names regardless of case
   const findColumn = (row, columnName) => {
-    const lowerColumnName = columnName.toLowerCase();
-    const actualColumn = Object.keys(row).find(
-      key => key.toLowerCase() === lowerColumnName
-    );
-    return actualColumn ? row[actualColumn] : null;
+    const key = Object.keys(row).find(key => key.toLowerCase() === columnName.toLowerCase());
+    return key ? row[key] : null;
   };
 
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
     if (!file) return;
 
-    setSelectedFile(file);
+    setFile(file);
     setLoading(true);
     setError(null);
     setChartData(null);
@@ -135,19 +135,25 @@ const ExcelToSvg = () => {
 
       // Calculate the width based on the number of nodes at each level
       const levels = {};
-      const countNodesByLevel = (node, level = 0) => {
-        levels[level] = (levels[level] || 0) + 1;
-        if (node.children) {
-          node.children.forEach(child => countNodesByLevel(child, level + 1));
+      data.forEach(node => {
+        let depth = 0;
+        let currentId = node.id;
+        while (currentId) {
+          const parent = data.find(n => n.id === data.find(p => p.id === currentId)?.parentId);
+          if (parent) {
+            depth++;
+            currentId = parent.id;
+          } else {
+            break;
+          }
         }
-      };
-      countNodesByLevel(idToNodeMap[rootNode.id]);
+        levels[depth] = (levels[depth] || 0) + 1;
+      });
 
       const maxNodesAtLevel = Math.max(...Object.values(levels));
       const nodeWidth = 220; // Width of each node
       const nodeHeight = 100; // Height of each node
       const horizontalSpacing = 60; // Space between nodes horizontally
-      const verticalSpacing = 80; // Space between levels
 
       // Calculate minimum width needed based on maximum nodes at any level
       const minWidth = maxNodesAtLevel * (nodeWidth + horizontalSpacing);
@@ -169,12 +175,12 @@ const ExcelToSvg = () => {
         .parentNodeId((d) => d.parentId)
         .buttonContent(() => '')
         .compact(false) // Disable compact mode to ensure all nodes are shown
-        .linkUpdate(function(d, i, arr) {
+        .linkUpdate(function() {
           d3.select(this)
             .attr("stroke", "#c7c7c7")
             .attr("stroke-width", 2);
         })
-        .nodeContent(function(d, i, arr, state) {
+        .nodeContent(function(d) {
           const depth = d.depth || 0;
           const color = levelColors[depth] || levelColors.default;
           return `
@@ -224,53 +230,171 @@ const ExcelToSvg = () => {
     }
   };
 
-  const downloadSvg = () => {
-    if (!containerRef.current) return;
-
+  const handleDownload = async () => {
     try {
-      const svgElement = containerRef.current.querySelector('svg');
-      if (!svgElement) {
-        throw new Error('No SVG element found');
+      if (!chartRef.current) {
+        throw new Error('Chart is not available');
       }
 
-      const svgData = new XMLSerializer().serializeToString(svgElement);
-      const blob = new Blob([svgData], { type: 'image/svg+xml' });
-      const url = URL.createObjectURL(blob);
-      
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = 'org-chart.svg';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      const svgEl = containerRef.current.querySelector('svg');
+      if (!svgEl) {
+        throw new Error('SVG element not found');
+      }
+
+      if (selectedFormat === 'svg') {
+        // Export as SVG (original functionality)
+        const svgData = new XMLSerializer().serializeToString(svgEl);
+        const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+        const svgUrl = URL.createObjectURL(svgBlob);
+        
+        const downloadLink = document.createElement('a');
+        downloadLink.href = svgUrl;
+        downloadLink.download = 'org-chart.svg';
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+        URL.revokeObjectURL(svgUrl);
+      } else if (selectedFormat === 'png') {
+        // For PNG export, use a more direct approach
+        setError('Preparing PNG, please wait...');
+        
+        try {
+          // Clone the chart container to avoid modifying the original
+          const container = containerRef.current.cloneNode(true);
+          document.body.appendChild(container);
+          container.style.position = 'absolute';
+          container.style.top = '-9999px';
+          container.style.backgroundColor = 'white';
+          
+          // Use html2canvas with the cloned container
+          const canvas = await html2canvas(container, {
+            backgroundColor: '#FFFFFF',
+            scale: 2,
+            logging: false,
+            useCORS: true,
+            allowTaint: true
+          });
+          
+          // Clean up the cloned container
+          document.body.removeChild(container);
+          
+          // Get PNG data
+          const pngUrl = canvas.toDataURL('image/png');
+          
+          // Download PNG
+          const downloadLink = document.createElement('a');
+          downloadLink.href = pngUrl;
+          downloadLink.download = 'org-chart.png';
+          document.body.appendChild(downloadLink);
+          downloadLink.click();
+          document.body.removeChild(downloadLink);
+          
+          setError(null);
+        } catch (err) {
+          setError('Error creating PNG: ' + err.message);
+          console.error('Error in PNG generation:', err);
+        }
+      } else if (selectedFormat === 'pdf') {
+        // For PDF, use PNG approach first and then convert to PDF
+        setError('Preparing PDF, please wait...');
+        
+        try {
+          // Clone the chart container
+          const container = containerRef.current.cloneNode(true);
+          document.body.appendChild(container);
+          container.style.position = 'absolute';
+          container.style.top = '-9999px';
+          container.style.backgroundColor = 'white';
+          
+          // Use html2canvas with the cloned container
+          const canvas = await html2canvas(container, {
+            backgroundColor: '#FFFFFF',
+            scale: 2,
+            logging: false,
+            useCORS: true,
+            allowTaint: true
+          });
+          
+          // Clean up the cloned container
+          document.body.removeChild(container);
+          
+          // Set up PDF orientation based on canvas dimensions
+          const orientation = canvas.width > canvas.height ? 'l' : 'p';
+          
+          // Create PDF with proper dimensions
+          const pdf = new jsPDF(orientation, 'mm', 'a4');
+          
+          // Calculate PDF dimensions
+          const pageWidth = orientation === 'l' ? 297 : 210;
+          
+          // Calculate image dimensions to fit the page
+          const ratio = canvas.height / canvas.width;
+          const imgWidth = pageWidth - 20; // 10mm margins on each side
+          const imgHeight = imgWidth * ratio;
+          
+          // Add the image to the PDF centered on the page
+          pdf.addImage(
+            canvas.toDataURL('image/jpeg', 1.0),
+            'JPEG',
+            10, // Left margin
+            10, // Top margin
+            imgWidth,
+            imgHeight
+          );
+          
+          // Save the PDF
+          pdf.save('org-chart.pdf');
+          
+          setError(null);
+        } catch (err) {
+          setError('Error creating PDF: ' + err.message);
+          console.error('Error in PDF generation:', err);
+        }
+      }
     } catch (err) {
-      setError('Error downloading the SVG');
-      console.error('Error downloading SVG:', err);
+      setError('Error downloading chart: ' + err.message);
+      console.error('Error downloading chart:', err);
     }
+  };
+
+  const handleFormatChange = (event) => {
+    setSelectedFormat(event.target.value);
   };
 
   return (
     <div className="excel-to-svg-container">
       <div className="upload-section">
         <div className="file-input-container">
-          <input
-            type="file"
-            accept=".xlsx,.xls,.csv"
-            onChange={handleFileUpload}
-            className="file-input"
-            id="file-upload"
-          />
-          {selectedFile && (
-            <div className="selected-file">
-              Selected file: {selectedFile.name}
-            </div>
-          )}
+          <label className="file-input">
+            <input 
+              type="file" 
+              accept=".xlsx,.xls,.csv" 
+              onChange={handleFileUpload}
+              style={{ display: 'none' }}
+            />
+            <span>Choose Excel or CSV File</span>
+          </label>
+          {file && <div className="selected-file">Selected file: {file.name}</div>}
         </div>
         {chartData && !loading && !error && (
-          <button onClick={downloadSvg} className="download-button">
-            Download SVG
-          </button>
+          <div className="download-options">
+            <div className="format-selector">
+              <label htmlFor="format-select">Export Format:</label>
+              <select 
+                id="format-select" 
+                value={selectedFormat} 
+                onChange={handleFormatChange}
+                className="format-select"
+              >
+                <option value="svg">SVG</option>
+                <option value="pdf">PDF</option>
+                <option value="png">PNG</option>
+              </select>
+            </div>
+            <button onClick={handleDownload} className="download-button">
+              Download as {selectedFormat.toUpperCase()}
+            </button>
+          </div>
         )}
       </div>
       
