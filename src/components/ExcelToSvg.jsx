@@ -120,61 +120,82 @@ const ExcelToSvg = () => {
         throw new Error('No root node found in the data');
       }
 
-      // Build a proper hierarchical structure
-      const idToNodeMap = {};
-      data.forEach(node => {
-        idToNodeMap[node.id] = { ...node, children: [] };
-      });
+      // Get all nodes that report to a specific manager
+      const getDirectReports = (managerId) => {
+        return data.filter(node => node.parentId === managerId);
+      };
 
-      // Connect children to parents
-      data.forEach(node => {
-        if (node.parentId && idToNodeMap[node.parentId]) {
-          idToNodeMap[node.parentId].children.push(idToNodeMap[node.id]);
+      // Create a new dataset with consolidated structure
+      const consolidatedData = [];
+      
+      // Add the root node (e.g., Mike Kraft)
+      consolidatedData.push({
+        ...rootNode
+      });
+      
+      // Find managers (those with direct reports)
+      const middleManagers = data.filter(node => 
+        node.parentId === rootNode.id && 
+        getDirectReports(node.id).length > 0
+      );
+      
+      // Add each middle manager (e.g., Sergei West)
+      middleManagers.forEach(manager => {
+        consolidatedData.push({
+          ...manager
+        });
+        
+        // For each middle manager, create a consolidated node for all their direct reports
+        const directReports = getDirectReports(manager.id);
+        
+        if (directReports.length > 0) {
+          // Create a single consolidated node that contains all direct reports
+          const consolidatedNode = {
+            id: `consolidated_${manager.id}`,
+            name: '',  // No single name for the node
+            title: '',
+            parentId: manager.id,
+            _directReports: directReports
+          };
+          
+          consolidatedData.push(consolidatedNode);
         }
       });
 
-      // Calculate the width based on the number of nodes at each level
-      const levels = {};
-      data.forEach(node => {
-        let depth = 0;
-        let currentId = node.id;
-        while (currentId) {
-          const parent = data.find(n => n.id === data.find(p => p.id === currentId)?.parentId);
-          if (parent) {
-            depth++;
-            currentId = parent.id;
-          } else {
-            break;
-          }
-        }
-        levels[depth] = (levels[depth] || 0) + 1;
-      });
-
-      const maxNodesAtLevel = Math.max(...Object.values(levels));
-      const nodeWidth = 220; // Width of each node
-      const nodeHeight = 100; // Height of each node
-      const horizontalSpacing = 60; // Space between nodes horizontally
-
-      // Calculate minimum width needed based on maximum nodes at any level
-      const minWidth = maxNodesAtLevel * (nodeWidth + horizontalSpacing);
-      const chartWidth = Math.max(1600, minWidth); // Minimum width of 1600px
+      // Calculate the width based on the number of nodes
+      const nodeWidth = 220;
+      const nodeHeight = 120;
+      
+      // Calculate chart dimensions
+      const chartWidth = 1600;
+      const chartHeight = 800;
 
       const chart = new OrgChart();
 
       chart
         .container(containerRef.current)
         .svgWidth(chartWidth)
-        .svgHeight(800)
+        .svgHeight(chartHeight)
         .nodeWidth(() => nodeWidth)
-        .nodeHeight(() => nodeHeight)
-        .childrenMargin(() => 80)
-        .compactMarginBetween(() => 80)
-        .compactMarginPair(() => 80)
-        .siblingsMargin(() => 100)
+        .nodeHeight(d => {
+          // If this is a consolidated node with direct reports
+          if (d.data._directReports && d.data._directReports.length > 0) {
+            // Calculate height based on number of direct reports
+            // Base height + additional height per direct report
+            // Increased space for each report to prevent overflow
+            return Math.max(nodeHeight, 50 + d.data._directReports.length * 60);
+          }
+          return nodeHeight;
+        })
+        .childrenMargin(() => 60)
+        .compactMarginBetween(() => 40)
+        .compactMarginPair(() => 60) 
+        .siblingsMargin(() => 40)
         .nodeId((d) => d.id)
         .parentNodeId((d) => d.parentId)
         .buttonContent(() => '')
-        .compact(false) // Disable compact mode to ensure all nodes are shown
+        .compact(false)
+        .layout('top')
         .linkUpdate(function() {
           d3.select(this)
             .attr("stroke", "#c7c7c7")
@@ -183,40 +204,91 @@ const ExcelToSvg = () => {
         .nodeContent(function(d) {
           const depth = d.depth || 0;
           const color = levelColors[depth] || levelColors.default;
-          return `
-            <div style="
-              width: 100%;
-              height: 100%;
-              display: flex;
-              flex-direction: column;
-              justify-content: center;
-              align-items: center;
-              border-radius: 4px;
-              background-color: white;
-              border-top: 4px solid ${color};
-              box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            ">
+          const directReports = d.data._directReports || [];
+          
+          // If this is a consolidated node with direct reports
+          if (directReports.length > 0) {
+            // Create a box with stacked direct reports
+            let content = `
               <div style="
-                font-weight: bold;
-                font-size: 14px;
-                margin-bottom: 8px;
-                color: #333;
-                text-align: center;
-                padding: 0 8px;
-              ">${d.data.name}</div>
+                width: 100%;
+                height: 100%;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                border-radius: 4px;
+                background-color: white;
+                border-top: 4px solid ${levelColors[2]};
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+                padding: 12px;
+                box-sizing: border-box;
+                overflow: hidden;
+              ">`;
+            
+            directReports.forEach((report, index) => {
+              content += `
+                <div style="
+                  width: 100%;
+                  margin-top: ${index > 0 ? '12px' : '0'};
+                  padding-top: ${index > 0 ? '12px' : '0'};
+                  border-top: ${index > 0 ? '1px solid #f0f0f0' : 'none'};
+                ">
+                  <div style="
+                    font-weight: bold;
+                    font-size: 14px;
+                    color: #444;
+                    text-align: center;
+                    margin-bottom: 4px;
+                  ">${report.name}</div>
+                  <div style="
+                    font-size: 12px;
+                    color: #777;
+                    text-align: center;
+                  ">${report.title}</div>
+                </div>
+              `;
+            });
+            
+            content += `</div>`;
+            return content;
+          } else {
+            // Regular node with name and title
+            return `
               <div style="
-                font-size: 13px;
-                color: #666;
-                text-align: center;
-                padding: 0 8px;
-                white-space: normal;
-              ">${d.data.title}</div>
-            </div>
-          `;
+                width: 100%;
+                height: 100%;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                border-radius: 4px;
+                background-color: white;
+                border-top: 4px solid ${color};
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+                padding: 16px 12px;
+                box-sizing: border-box;
+              ">
+                <div style="
+                  font-weight: bold;
+                  font-size: 16px;
+                  margin-bottom: 6px;
+                  color: #333;
+                  text-align: center;
+                  width: 100%;
+                ">${d.data.name}</div>
+                <div style="
+                  font-size: 13px;
+                  color: #666;
+                  text-align: center;
+                  width: 100%;
+                ">${d.data.title}</div>
+              </div>`;
+          }
         });
 
-      // Use the flat data structure which works better with this library
-      chart.data(data);
+      // Use the consolidated data structure
+      chart.data(consolidatedData);
       
       // Force expand all nodes
       chart.expandAll();
@@ -255,105 +327,415 @@ const ExcelToSvg = () => {
         document.body.removeChild(downloadLink);
         URL.revokeObjectURL(svgUrl);
       } else if (selectedFormat === 'png') {
-        // For PNG export, use a more direct approach
-        setError('Preparing PNG, please wait...');
+        // Show loading message
+        setError(`Preparing PNG, please wait...`);
         
         try {
-          // Clone the chart container to avoid modifying the original
-          const container = containerRef.current.cloneNode(true);
-          document.body.appendChild(container);
-          container.style.position = 'absolute';
-          container.style.top = '-9999px';
-          container.style.backgroundColor = 'white';
+          // Create a temporary version of the chart container for export
+          const tempContainer = document.createElement('div');
+          tempContainer.style.position = 'fixed';
+          tempContainer.style.top = '0';
+          tempContainer.style.left = '0';
+          tempContainer.style.width = '1600px';
+          tempContainer.style.height = '800px';
+          tempContainer.style.backgroundColor = 'white';
+          tempContainer.style.zIndex = '10000';
+          document.body.appendChild(tempContainer);
           
-          // Use html2canvas with the cloned container
-          const canvas = await html2canvas(container, {
-            backgroundColor: '#FFFFFF',
-            scale: 2,
-            logging: false,
-            useCORS: true,
-            allowTaint: true
-          });
+          // Create a new chart renderer in the temporary container
+          const exportChart = new OrgChart();
           
-          // Clean up the cloned container
-          document.body.removeChild(container);
+          exportChart
+            .container(tempContainer)
+            .svgWidth(1600)
+            .svgHeight(800)
+            .nodeWidth(() => 220)
+            .nodeHeight(d => {
+              // If this is a consolidated node with direct reports
+              if (d.data._directReports && d.data._directReports.length > 0) {
+                // Calculate height based on number of direct reports
+                return Math.max(120, 50 + d.data._directReports.length * 60);
+              }
+              return 120;
+            })
+            .childrenMargin(() => 60)
+            .compactMarginBetween(() => 40)
+            .compactMarginPair(() => 60)
+            .siblingsMargin(() => 40)
+            .nodeId((d) => d.id)
+            .parentNodeId((d) => d.parentId)
+            .buttonContent(() => '')
+            .compact(false)
+            .layout('top')
+            .linkUpdate(function() {
+              d3.select(this)
+                .attr("stroke", "#c7c7c7")
+                .attr("stroke-width", 2);
+            })
+            .nodeContent(function(d) {
+              const depth = d.depth || 0;
+              const color = levelColors[depth] || levelColors.default;
+              const directReports = d.data._directReports || [];
+              
+              // If this is a consolidated node with direct reports
+              if (directReports.length > 0) {
+                // Create a box with stacked direct reports
+                let content = `
+                  <div style="
+                    width: 100%;
+                    height: 100%;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: center;
+                    align-items: center;
+                    border-radius: 4px;
+                    background-color: white;
+                    border-top: 4px solid ${levelColors[2]};
+                    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+                    padding: 12px;
+                    box-sizing: border-box;
+                    overflow: hidden;
+                  ">`;
+                
+                directReports.forEach((report, index) => {
+                  content += `
+                    <div style="
+                      width: 100%;
+                      margin-top: ${index > 0 ? '12px' : '0'};
+                      padding-top: ${index > 0 ? '12px' : '0'};
+                      border-top: ${index > 0 ? '1px solid #f0f0f0' : 'none'};
+                    ">
+                      <div style="
+                        font-weight: bold;
+                        font-size: 14px;
+                        color: #444;
+                        text-align: center;
+                        margin-bottom: 4px;
+                      ">${report.name}</div>
+                      <div style="
+                        font-size: 12px;
+                        color: #777;
+                        text-align: center;
+                      ">${report.title}</div>
+                    </div>
+                  `;
+                });
+                
+                content += `</div>`;
+                return content;
+              } else {
+                // Regular node with name and title
+                return `
+                  <div style="
+                    width: 100%;
+                    height: 100%;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: center;
+                    align-items: center;
+                    border-radius: 4px;
+                    background-color: white;
+                    border-top: 4px solid ${color};
+                    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+                    padding: 16px 12px;
+                    box-sizing: border-box;
+                  ">
+                    <div style="
+                      font-weight: bold;
+                      font-size: 16px;
+                      margin-bottom: 6px;
+                      color: #333;
+                      text-align: center;
+                      width: 100%;
+                    ">${d.data.name}</div>
+                    <div style="
+                      font-size: 13px;
+                      color: #666;
+                      text-align: center;
+                      width: 100%;
+                    ">${d.data.title}</div>
+                  </div>`;
+              }
+            });
+            
+          // Set data and render
+          exportChart.data(chartRef.current.data());
+          exportChart.expandAll();
+          exportChart.render();
           
-          // Get PNG data
-          const pngUrl = canvas.toDataURL('image/png');
-          
-          // Download PNG
-          const downloadLink = document.createElement('a');
-          downloadLink.href = pngUrl;
-          downloadLink.download = 'org-chart.png';
-          document.body.appendChild(downloadLink);
-          downloadLink.click();
-          document.body.removeChild(downloadLink);
-          
-          setError(null);
+          // Give the chart time to render
+          setTimeout(async () => {
+            try {
+              // Use html2canvas to create a PNG
+              const canvas = await html2canvas(tempContainer, {
+                backgroundColor: 'white',
+                scale: 2,
+                useCORS: true,
+                allowTaint: true,
+                logging: true
+              });
+              
+              // Remove the temporary container
+              document.body.removeChild(tempContainer);
+              
+              // Get PNG data
+              const pngUrl = canvas.toDataURL('image/png');
+              
+              // Download PNG
+              const downloadLink = document.createElement('a');
+              downloadLink.href = pngUrl;
+              downloadLink.download = 'org-chart.png';
+              document.body.appendChild(downloadLink);
+              downloadLink.click();
+              document.body.removeChild(downloadLink);
+              setError(null);
+            } catch (err) {
+              console.error('Error creating PNG:', err);
+              setError(`Error creating PNG: ${err.message}`);
+              document.body.removeChild(tempContainer);
+            }
+          }, 1000);
         } catch (err) {
-          setError('Error creating PNG: ' + err.message);
-          console.error('Error in PNG generation:', err);
+          console.error('Error preparing PNG:', err);
+          setError(`Error preparing PNG: ${err.message}`);
         }
       } else if (selectedFormat === 'pdf') {
-        // For PDF, use PNG approach first and then convert to PDF
-        setError('Preparing PDF, please wait...');
+        // Show loading message
+        setError(`Preparing PDF, please wait...`);
         
         try {
-          // Clone the chart container
-          const container = containerRef.current.cloneNode(true);
-          document.body.appendChild(container);
-          container.style.position = 'absolute';
-          container.style.top = '-9999px';
-          container.style.backgroundColor = 'white';
+          // Get the data from the chart
+          const chartData = chartRef.current.data();
           
-          // Use html2canvas with the cloned container
-          const canvas = await html2canvas(container, {
-            backgroundColor: '#FFFFFF',
-            scale: 2,
-            logging: false,
-            useCORS: true,
-            allowTaint: true
+          // Create a new PDF document (landscape for wider org charts)
+          const pdf = new jsPDF({
+            orientation: 'landscape',
+            unit: 'mm',
+            format: 'a4'
           });
           
-          // Clean up the cloned container
-          document.body.removeChild(container);
+          // Define starting position and dimensions
+          const pageWidth = pdf.internal.pageSize.getWidth();
+          const pageHeight = pdf.internal.pageSize.getHeight();
+          const margin = 10;
+          const availableWidth = pageWidth - (margin * 2);
           
-          // Set up PDF orientation based on canvas dimensions
-          const orientation = canvas.width > canvas.height ? 'l' : 'p';
+          // Add title
+          pdf.setFontSize(18);
+          pdf.text('Organizational Chart', pageWidth / 2, margin + 5, { align: 'center' });
           
-          // Create PDF with proper dimensions
-          const pdf = new jsPDF(orientation, 'mm', 'a4');
+          // Find the root node
+          const rootNode = chartData.find(node => !node.parentId);
+          if (!rootNode) {
+            throw new Error('No root node found');
+          }
           
-          // Calculate PDF dimensions
-          const pageWidth = orientation === 'l' ? 297 : 210;
+          // Function to organize nodes by level
+          const organizeByLevel = () => {
+            const levels = {};
+            
+            // First determine levels for all nodes (breadth-first traversal)
+            const setLevel = (nodeId, level) => {
+              if (!levels[level]) {
+                levels[level] = [];
+              }
+              
+              const node = chartData.find(n => n.id === nodeId);
+              if (node) {
+                levels[level].push(node);
+                
+                // Process children
+                chartData
+                  .filter(n => n.parentId === nodeId)
+                  .forEach(child => setLevel(child.id, level + 1));
+              }
+            };
+            
+            // Start with root node at level 0
+            setLevel(rootNode.id, 0);
+            
+            return levels;
+          };
           
-          // Calculate image dimensions to fit the page
-          const ratio = canvas.height / canvas.width;
-          const imgWidth = pageWidth - 20; // 10mm margins on each side
-          const imgHeight = imgWidth * ratio;
+          // Get nodes organized by level
+          const nodesByLevel = organizeByLevel();
+          const maxLevel = Math.max(...Object.keys(nodesByLevel).map(Number));
           
-          // Add the image to the PDF centered on the page
-          pdf.addImage(
-            canvas.toDataURL('image/jpeg', 1.0),
-            'JPEG',
-            10, // Left margin
-            10, // Top margin
-            imgWidth,
-            imgHeight
-          );
+          // Set box dimensions
+          const boxWidth = 70;
+          const boxHeight = 30;
+          const horizontalSpacing = 20;
+          const verticalSpacing = 50;
+          let startY = margin + 15; // Start position after title
+          
+          // Track node positions for drawing connections
+          const nodePositions = {};
+          
+          // Draw nodes level by level
+          let maxY = startY;
+          
+          for (let level = 0; level <= maxLevel; level++) {
+            const nodes = nodesByLevel[level] || [];
+            if (nodes.length === 0) continue;
+            
+            // Calculate width needed for this level
+            const levelWidth = nodes.length * boxWidth + (nodes.length - 1) * horizontalSpacing;
+            const startX = margin + (availableWidth - levelWidth) / 2;
+            
+            // Draw each node in this level
+            let currentX = startX;
+            const levelY = startY + (level * (boxHeight + verticalSpacing));
+            
+            nodes.forEach(node => {
+              // Use level colors
+              let levelColor;
+              if (node.id.startsWith('consolidated_')) {
+                levelColor = levelColors[2]; // Use level 2 color for consolidated box
+              } else {
+                levelColor = levelColors[level] || levelColors.default;
+              }
+              
+              const hexColor = levelColor.substring(1); // Remove #
+              const r = parseInt(hexColor.substring(0, 2), 16);
+              const g = parseInt(hexColor.substring(2, 4), 16);
+              const b = parseInt(hexColor.substring(4, 6), 16);
+              
+              // Calculate box height based on if it's a consolidated node
+              const totalBoxHeight = node._directReports && node._directReports.length > 0
+                ? boxHeight + (node._directReports.length * 20)
+                : boxHeight;
+              
+              // Draw node box with colored top border
+              pdf.setFillColor(255, 255, 255);
+              pdf.roundedRect(currentX, levelY, boxWidth, totalBoxHeight, 1, 1, 'F');
+              
+              // Draw the colored top border
+              pdf.setFillColor(r, g, b);
+              pdf.roundedRect(currentX, levelY, boxWidth, 4, 1, 1, 'F');
+              
+              const textX = currentX + (boxWidth / 2);
+              
+              // If this is a consolidated node with direct reports
+              if (node._directReports && node._directReports.length > 0) {
+                // Add more space for the first report
+                let reportY = levelY + 12;
+                
+                // Draw each direct report in the consolidated box
+                node._directReports.forEach((report, idx) => {
+                  // Add separator if not the first report
+                  if (idx > 0) {
+                    pdf.setDrawColor(240, 240, 240);
+                    pdf.setLineWidth(0.2);
+                    pdf.line(currentX + 5, reportY - 5, currentX + boxWidth - 5, reportY - 5);
+                  }
+                  
+                  // Name
+                  pdf.setFont(undefined, 'bold');
+                  pdf.setFontSize(9);
+                  pdf.setTextColor(70, 70, 70);
+                  pdf.text(report.name, textX, reportY, { 
+                    align: 'center',
+                    maxWidth: boxWidth - 6
+                  });
+                  reportY += 7;
+                  
+                  // Title
+                  pdf.setFont(undefined, 'normal');
+                  pdf.setFontSize(7);
+                  pdf.setTextColor(120, 120, 120);
+                  pdf.text(report.title || '', textX, reportY, { 
+                    align: 'center',
+                    maxWidth: boxWidth - 6
+                  });
+                  reportY += 12;
+                });
+              } else {
+                // Regular node - add name with better formatting
+                pdf.setFontSize(10);
+                pdf.setTextColor(0, 0, 0);
+                pdf.setFont(undefined, 'bold');
+                
+                // Handle name with line breaks for long names
+                pdf.text(node.name, textX, levelY + 12, { 
+                  align: 'center',
+                  maxWidth: boxWidth - 4
+                });
+                
+                // Add title
+                pdf.setFontSize(8);
+                pdf.setTextColor(100, 100, 100);
+                pdf.setFont(undefined, 'normal');
+                
+                // Handle title with line breaks
+                pdf.text(node.title || '', textX, levelY + 20, { 
+                  align: 'center',
+                  maxWidth: boxWidth - 4
+                });
+              }
+              
+              // Store node position for drawing connections
+              nodePositions[node.id] = {
+                x: currentX + (boxWidth / 2),
+                y: levelY,
+                height: totalBoxHeight
+              };
+              
+              // Move to next position
+              currentX += boxWidth + horizontalSpacing;
+            });
+            
+            maxY = Math.max(maxY, levelY + boxHeight);
+          }
+          
+          // Draw connections between nodes
+          pdf.setDrawColor(199, 199, 199);
+          pdf.setLineWidth(0.5);
+          
+          chartData.forEach(node => {
+            if (node.parentId && nodePositions[node.id] && nodePositions[node.parentId]) {
+              const child = nodePositions[node.id];
+              const parent = nodePositions[node.parentId];
+              
+              // Draw line from parent bottom to child top
+              const startX = parent.x;
+              const startY = parent.y + parent.height;
+              const endX = child.x;
+              const endY = child.y;
+              
+              // Draw vertical line down from parent
+              pdf.line(startX, startY, startX, startY + (verticalSpacing / 2));
+              
+              // Draw horizontal line to align with child's x position
+              pdf.line(startX, startY + (verticalSpacing / 2), endX, startY + (verticalSpacing / 2));
+              
+              // Draw vertical line to child
+              pdf.line(endX, startY + (verticalSpacing / 2), endX, endY);
+            }
+          });
+          
+          // Check if we need multiple pages
+          if (maxY > pageHeight - margin) {
+            pdf.addPage();
+            // Could implement continuing the chart on next page if needed
+          }
           
           // Save the PDF
           pdf.save('org-chart.pdf');
-          
           setError(null);
         } catch (err) {
-          setError('Error creating PDF: ' + err.message);
-          console.error('Error in PDF generation:', err);
+          console.error('Error creating PDF:', err);
+          setError(`Error creating PDF: ${err.message}`);
+          setTimeout(() => {
+            alert(`Error creating PDF: ${err.message}\nCheck console for details.`);
+          }, 100);
         }
       }
     } catch (err) {
+      console.error('Download error:', err);
       setError('Error downloading chart: ' + err.message);
-      console.error('Error downloading chart:', err);
+      setTimeout(() => {
+        alert(`Error downloading chart: ${err.message}\nCheck console for details.`);
+      }, 100);
     }
   };
 
@@ -420,8 +802,7 @@ const ExcelToSvg = () => {
             border: chartData ? '1px solid #ccc' : 'none',
             borderRadius: '4px',
             marginTop: '20px',
-            display: loading ? 'none' : 'block',
-            overflow: 'auto',
+            display: loading ? 'none' : 'block'
           }}
         />
       </div>
