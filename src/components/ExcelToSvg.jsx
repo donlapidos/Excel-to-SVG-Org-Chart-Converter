@@ -128,39 +128,39 @@ const ExcelToSvg = () => {
       // Create a new dataset with consolidated structure
       const consolidatedData = [];
       
-      // Add the root node (e.g., Mike Kraft)
-      consolidatedData.push({
-        ...rootNode
-      });
-      
-      // Find managers (those with direct reports)
-      const middleManagers = data.filter(node => 
-        node.parentId === rootNode.id && 
-        getDirectReports(node.id).length > 0
-      );
-      
-      // Add each middle manager (e.g., Sergei West)
-      middleManagers.forEach(manager => {
-        consolidatedData.push({
-          ...manager
-        });
+      // Function to add a manager and their direct reports to the consolidated data
+      const addManagerAndDirectReports = (manager) => {
+        // Add the manager node
+        consolidatedData.push({...manager});
         
-        // For each middle manager, create a consolidated node for all their direct reports
+        // Get direct reports for this manager
         const directReports = getDirectReports(manager.id);
         
-        if (directReports.length > 0) {
-          // Create a single consolidated node that contains all direct reports
+        // Split direct reports into those who have their own reports (managers) and those who don't
+        const managerReports = directReports.filter(report => getDirectReports(report.id).length > 0);
+        const individualReports = directReports.filter(report => getDirectReports(report.id).length === 0);
+        
+        // Process each manager report recursively
+        managerReports.forEach(managerReport => {
+          addManagerAndDirectReports(managerReport);
+        });
+        
+        // If there are individual reports, create a consolidated node for them
+        if (individualReports.length > 0) {
           const consolidatedNode = {
             id: `consolidated_${manager.id}`,
-            name: '',  // No single name for the node
+            name: '',
             title: '',
             parentId: manager.id,
-            _directReports: directReports
+            _directReports: individualReports
           };
           
           consolidatedData.push(consolidatedNode);
         }
-      });
+      };
+      
+      // Start with the root node
+      addManagerAndDirectReports(rootNode);
 
       // Calculate the width based on the number of nodes
       const nodeWidth = 220;
@@ -519,9 +519,10 @@ const ExcelToSvg = () => {
           const pageHeight = pdf.internal.pageSize.getHeight();
           const margin = 10;
           const availableWidth = pageWidth - (margin * 2);
+          const availableHeight = pageHeight - (margin * 2);
           
           // Add title
-          pdf.setFontSize(18);
+          pdf.setFontSize(16);
           pdf.text('Organizational Chart', pageWidth / 2, margin + 5, { align: 'center' });
           
           // Find the root node
@@ -561,12 +562,19 @@ const ExcelToSvg = () => {
           const nodesByLevel = organizeByLevel();
           const maxLevel = Math.max(...Object.keys(nodesByLevel).map(Number));
           
-          // Set box dimensions
-          const boxWidth = 70;
-          const boxHeight = 30;
-          const horizontalSpacing = 20;
-          const verticalSpacing = 50;
-          let startY = margin + 15; // Start position after title
+          // Calculate appropriate box size based on chart complexity
+          const numNodesWidest = Math.max(...Object.values(nodesByLevel).map(level => level.length));
+          
+          // Dynamically calculate box dimensions to fit the entire chart on one page
+          // More levels or nodes = smaller boxes
+          const boxWidth = Math.min(60, availableWidth / (numNodesWidest + 1));
+          const verticalSpace = availableHeight - (margin + 10); // space after title
+          const boxHeight = Math.min(25, verticalSpace / (maxLevel + 2)); // +2 for margins
+          
+          const horizontalSpacing = Math.min(15, (availableWidth - (boxWidth * numNodesWidest)) / numNodesWidest);
+          const verticalSpacing = Math.min(35, (verticalSpace - (boxHeight * (maxLevel + 1))) / (maxLevel + 1));
+          
+          let startY = margin + 12; // Start position after title
           
           // Track node positions for drawing connections
           const nodePositions = {};
@@ -601,8 +609,10 @@ const ExcelToSvg = () => {
               const b = parseInt(hexColor.substring(4, 6), 16);
               
               // Calculate box height based on if it's a consolidated node
-              const totalBoxHeight = node._directReports && node._directReports.length > 0
-                ? boxHeight + (node._directReports.length * 20)
+              const numDirectReports = node._directReports ? node._directReports.length : 0;
+              // Adjust box height for consolidated nodes, but ensure it doesn't exceed the page
+              const totalBoxHeight = node._directReports && numDirectReports > 0
+                ? Math.min(boxHeight + (numDirectReports * 12), boxHeight * 3)
                 : boxHeight;
               
               // Draw node box with colored top border
@@ -611,65 +621,75 @@ const ExcelToSvg = () => {
               
               // Draw the colored top border
               pdf.setFillColor(r, g, b);
-              pdf.roundedRect(currentX, levelY, boxWidth, 4, 1, 1, 'F');
+              pdf.roundedRect(currentX, levelY, boxWidth, 2, 1, 1, 'F');
               
               const textX = currentX + (boxWidth / 2);
               
               // If this is a consolidated node with direct reports
               if (node._directReports && node._directReports.length > 0) {
-                // Add more space for the first report
-                let reportY = levelY + 12;
+                // Calculate appropriate font size and spacing based on number of reports
+                const fontSize = Math.max(5, 7 - Math.floor(numDirectReports / 3));
+                const nameSize = fontSize;
+                const titleSize = Math.max(4, fontSize - 1);
+                const itemSpacing = Math.max(5, 8 - Math.floor(numDirectReports / 2));
+                
+                // Start position for first item
+                let reportY = levelY + 6;
                 
                 // Draw each direct report in the consolidated box
                 node._directReports.forEach((report, idx) => {
                   // Add separator if not the first report
                   if (idx > 0) {
                     pdf.setDrawColor(240, 240, 240);
-                    pdf.setLineWidth(0.2);
-                    pdf.line(currentX + 5, reportY - 5, currentX + boxWidth - 5, reportY - 5);
+                    pdf.setLineWidth(0.1);
+                    pdf.line(currentX + 2, reportY - 2, currentX + boxWidth - 2, reportY - 2);
                   }
                   
                   // Name
                   pdf.setFont(undefined, 'bold');
-                  pdf.setFontSize(9);
+                  pdf.setFontSize(nameSize);
                   pdf.setTextColor(70, 70, 70);
                   pdf.text(report.name, textX, reportY, { 
                     align: 'center',
-                    maxWidth: boxWidth - 6
+                    maxWidth: boxWidth - 4
                   });
-                  reportY += 7;
+                  reportY += nameSize * 0.5;
                   
                   // Title
                   pdf.setFont(undefined, 'normal');
-                  pdf.setFontSize(7);
+                  pdf.setFontSize(titleSize);
                   pdf.setTextColor(120, 120, 120);
                   pdf.text(report.title || '', textX, reportY, { 
                     align: 'center',
-                    maxWidth: boxWidth - 6
+                    maxWidth: boxWidth - 4
                   });
-                  reportY += 12;
+                  reportY += itemSpacing;
                 });
               } else {
                 // Regular node - add name with better formatting
-                pdf.setFontSize(10);
+                // Adjust font size based on available space
+                const nameSize = Math.min(8, boxWidth / 10);
+                const titleSize = Math.max(6, nameSize - 1);
+                
+                pdf.setFontSize(nameSize);
                 pdf.setTextColor(0, 0, 0);
                 pdf.setFont(undefined, 'bold');
                 
                 // Handle name with line breaks for long names
-                pdf.text(node.name, textX, levelY + 12, { 
+                pdf.text(node.name, textX, levelY + 6, { 
                   align: 'center',
-                  maxWidth: boxWidth - 4
+                  maxWidth: boxWidth - 2
                 });
                 
                 // Add title
-                pdf.setFontSize(8);
+                pdf.setFontSize(titleSize);
                 pdf.setTextColor(100, 100, 100);
                 pdf.setFont(undefined, 'normal');
                 
                 // Handle title with line breaks
-                pdf.text(node.title || '', textX, levelY + 20, { 
+                pdf.text(node.title || '', textX, levelY + 10, { 
                   align: 'center',
-                  maxWidth: boxWidth - 4
+                  maxWidth: boxWidth - 2
                 });
               }
               
@@ -688,8 +708,8 @@ const ExcelToSvg = () => {
           }
           
           // Draw connections between nodes
-          pdf.setDrawColor(199, 199, 199);
-          pdf.setLineWidth(0.5);
+          pdf.setDrawColor(180, 180, 180);
+          pdf.setLineWidth(0.3);
           
           chartData.forEach(node => {
             if (node.parentId && nodePositions[node.id] && nodePositions[node.parentId]) {
@@ -703,21 +723,15 @@ const ExcelToSvg = () => {
               const endY = child.y;
               
               // Draw vertical line down from parent
-              pdf.line(startX, startY, startX, startY + (verticalSpacing / 2));
+              pdf.line(startX, startY, startX, startY + (verticalSpacing / 3));
               
               // Draw horizontal line to align with child's x position
-              pdf.line(startX, startY + (verticalSpacing / 2), endX, startY + (verticalSpacing / 2));
+              pdf.line(startX, startY + (verticalSpacing / 3), endX, startY + (verticalSpacing / 3));
               
               // Draw vertical line to child
-              pdf.line(endX, startY + (verticalSpacing / 2), endX, endY);
+              pdf.line(endX, startY + (verticalSpacing / 3), endX, endY);
             }
           });
-          
-          // Check if we need multiple pages
-          if (maxY > pageHeight - margin) {
-            pdf.addPage();
-            // Could implement continuing the chart on next page if needed
-          }
           
           // Save the PDF
           pdf.save('org-chart.pdf');
