@@ -14,20 +14,30 @@ const ExcelToSvg = () => {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
   
-  // New state for multiple sheets support
+  // Sheet management state
   const [availableSheets, setAvailableSheets] = useState([]);
   const [selectedSheets, setSelectedSheets] = useState([]);
-  const [sheetChartData, setSheetChartData] = useState({}); // Store chart data for each sheet
+  const [sheetChartData, setSheetChartData] = useState({});
   const [currentSheetIndex, setCurrentSheetIndex] = useState(0);
-  const [processedSheets, setProcessedSheets] = useState({}); // Track which sheets have been processed
+  const [processedSheets, setProcessedSheets] = useState({});
+  
+  // UI state
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef(null);
 
-  // Debug useEffect to log state changes
+  // Close dropdown when clicking outside
   useEffect(() => {
-    console.log("Available sheets:", availableSheets);
-    console.log("Selected sheets:", selectedSheets);
-    console.log("Current sheet index:", currentSheetIndex);
-    console.log("Processed sheets:", processedSheets);
-  }, [availableSheets, selectedSheets, currentSheetIndex, processedSheets]);
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   // Color scheme for different levels
   const levelColors = {
@@ -222,14 +232,11 @@ const ExcelToSvg = () => {
 
   // Handle sheet selection
   const handleSheetSelection = (sheetName) => {
-    console.log(`Sheet selection changed for: ${sheetName}`);
     setSelectedSheets(prev => {
       const newSelection = prev.includes(sheetName)
         ? prev.filter(sheet => sheet !== sheetName)
         : [...prev, sheetName];
         
-      console.log("New sheet selection:", newSelection);
-      
       // If we're removing the current sheet, we need to change the view
       if (prev.includes(sheetName) && !newSelection.includes(sheetName) && 
           selectedSheets[currentSheetIndex] === sheetName) {
@@ -259,6 +266,11 @@ const ExcelToSvg = () => {
     });
   };
 
+  // Remove a single sheet from selection (used for tags)
+  const removeSheet = (sheetName) => {
+    handleSheetSelection(sheetName);
+  };
+
   // Select or deselect all sheets
   const handleBulkSelection = (selectAll) => {
     if (selectAll) {
@@ -285,6 +297,10 @@ const ExcelToSvg = () => {
       setChartData(null);
       d3.select(containerRef.current).selectAll('*').remove();
     }
+  };
+
+  const toggleDropdown = () => {
+    setIsDropdownOpen(!isDropdownOpen);
   };
 
   // Process a sheet by name - utility function
@@ -1155,51 +1171,85 @@ const ExcelToSvg = () => {
         </div>
       </div>
         
-      {/* Sheet Management Section */}
-      <div className="sheet-management">
-        {/* Sheet Selection UI - Enhanced with better visual design */}
-        {availableSheets.length >= 1 && (
-          <div className="sheet-selection">
-            <h3>
-              Available Sheets
-              <span>{availableSheets.length}</span>
-            </h3>
-            
-            <div className="sheet-selection-actions">
-              <button 
-                onClick={() => handleBulkSelection(true)}
-                className="sheet-action-button"
-              >
-                Select All Sheets
-              </button>
-              <button 
-                onClick={() => handleBulkSelection(false)}
-                className="sheet-action-button"
-              >
-                Clear Selection
-              </button>
-            </div>
-            
-            <div className="sheet-list">
-              {availableSheets.map(sheet => (
-                <div key={sheet} className="sheet-item">
-                  <label className="sheet-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={selectedSheets.includes(sheet)}
-                      onChange={() => handleSheetSelection(sheet)}
-                    />
-                    <span>{sheet}</span>
-                  </label>
-                  <span className={`sheet-status ${processedSheets[sheet]}`}>
-                    {processedSheets[sheet] === 'done' && '✓'}
-                    {processedSheets[sheet] === 'processing' && '⟳'}
-                    {processedSheets[sheet] === 'error' && '✗'}
-                  </span>
+      {/* Sheet Management Section - Streamlined with Dropdown */}
+      {availableSheets.length >= 1 && (
+        <div className="sheet-management">
+          <div className="sheet-selector">
+            <div className="sheet-dropdown-container" ref={dropdownRef}>
+              <div className="sheet-dropdown-header" onClick={toggleDropdown}>
+                <div className="sheet-dropdown-header-text">
+                  {selectedSheets.length > 0 
+                    ? `${selectedSheets.length} sheet${selectedSheets.length !== 1 ? 's' : ''} selected` 
+                    : 'Select sheets to process'}
                 </div>
-              ))}
+                <div className="sheet-dropdown-header-count">
+                  {selectedSheets.length}/{availableSheets.length}
+                </div>
+              </div>
+              
+              {isDropdownOpen && (
+                <div className="sheet-dropdown-content">
+                  <div className="sheet-dropdown-actions">
+                    <button 
+                      className="sheet-dropdown-action" 
+                      onClick={() => {
+                        handleBulkSelection(true);
+                        setIsDropdownOpen(false);
+                      }}
+                    >
+                      Select All
+                    </button>
+                    <button 
+                      className="sheet-dropdown-action" 
+                      onClick={() => {
+                        handleBulkSelection(false);
+                        setIsDropdownOpen(false);
+                      }}
+                    >
+                      Clear All
+                    </button>
+                  </div>
+                  <div className="sheet-dropdown-items">
+                    {availableSheets.map(sheet => (
+                      <div key={sheet} className="sheet-dropdown-item">
+                        <label className="sheet-checkbox">
+                          <input
+                            type="checkbox"
+                            checked={selectedSheets.includes(sheet)}
+                            onChange={() => handleSheetSelection(sheet)}
+                          />
+                          <span>{sheet}</span>
+                        </label>
+                        <span className={`sheet-status ${processedSheets[sheet]}`}>
+                          {processedSheets[sheet] === 'done' && '✓'}
+                          {processedSheets[sheet] === 'processing' && '⟳'}
+                          {processedSheets[sheet] === 'error' && '✗'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
             
+            {/* Selected Sheets Tags */}
+            {selectedSheets.length > 0 && (
+              <div className="selected-sheets-tags">
+                {selectedSheets.map(sheet => (
+                  <div key={sheet} className="sheet-tag">
+                    {sheet}
+                    <span 
+                      className="sheet-tag-remove" 
+                      onClick={() => removeSheet(sheet)}
+                    >
+                      ×
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            
+            {/* Process Button */}
             {selectedSheets.length > 0 && (
               <button 
                 onClick={processAllSelectedSheets}
@@ -1209,70 +1259,8 @@ const ExcelToSvg = () => {
               </button>
             )}
           </div>
-        )}
-        
-        {/* Chart Navigation - Enhanced with better visual design */}
-        {selectedSheets.length > 1 && chartData && (
-          <div className="chart-navigation">
-            <button 
-              onClick={handlePrevSheet}
-              disabled={currentSheetIndex === 0}
-              className="nav-button"
-            >
-              &laquo; Previous
-            </button>
-            
-            <div className="sheet-indicator">
-              <div className="current-sheet-label">VIEWING SHEET</div>
-              <div className="current-sheet-name">{selectedSheets[currentSheetIndex]}</div>
-              <div className="sheet-counter">{currentSheetIndex + 1} of {selectedSheets.length}</div>
-            </div>
-            
-            <button 
-              onClick={handleNextSheet}
-              disabled={currentSheetIndex === selectedSheets.length - 1}
-              className="nav-button"
-            >
-              Next &raquo;
-            </button>
-          </div>
-        )}
-        
-        {/* Chart title for single sheet scenario */}
-        {selectedSheets.length === 1 && chartData && !loading && (
-          <div className="current-sheet-display">
-            <h3>Current Chart: {selectedSheets[0]}</h3>
-          </div>
-        )}
-        
-        {/* Download Options Section - Enhanced with better visual design */}
-        {chartData && !loading && !error && (
-          <div className="download-options">
-            <div className="format-selector">
-              <label htmlFor="format-select">Export Format:</label>
-              <select 
-                id="format-select" 
-                value={selectedFormat} 
-                onChange={handleFormatChange}
-                className="format-select"
-              >
-                <option value="svg">SVG</option>
-                <option value="pdf">PDF</option>
-                <option value="png">PNG</option>
-              </select>
-              {(selectedFormat === 'svg' || selectedFormat === 'png') && selectedSheets.length > 1 && (
-                <span className="format-note">
-                  {selectedFormat.toUpperCase()} export works with one sheet at a time
-                </span>
-              )}
-            </div>
-            <button onClick={handleDownload} className="download-button">
-              Download as {selectedFormat.toUpperCase()}
-              {selectedSheets.length > 1 && selectedFormat === 'pdf' ? ' (All Selected)' : ''}
-            </button>
-          </div>
-        )}
-      </div>
+        </div>
+      )}
       
       {/* Status Messages */}
       {loading && (
@@ -1287,13 +1275,35 @@ const ExcelToSvg = () => {
         </div>
       )}
       
-      {/* Chart Container with Title Bar */}
-      <div className="chart-container">
-        {chartData && selectedSheets.length > 0 && (
-          <div className="chart-title-bar">
-            <h2>{selectedSheets[currentSheetIndex]} Organization Chart</h2>
+      {/* Tabs Navigation for sheets */}
+      {selectedSheets.length > 1 && chartData && !loading && (
+        <div className="chart-tabs">
+          {selectedSheets.map((sheet, index) => (
+            <button
+              key={sheet}
+              className={`chart-tab ${index === currentSheetIndex ? 'active' : ''}`}
+              onClick={() => handleSheetChange(index)}
+            >
+              {sheet}
+            </button>
+          ))}
+          <div className="chart-tab-indicator">
+            {currentSheetIndex + 1} of {selectedSheets.length}
           </div>
-        )}
+        </div>
+      )}
+      
+      {/* Single sheet indicator */}
+      {selectedSheets.length === 1 && chartData && !loading && (
+        <div className="chart-tabs">
+          <button className="chart-tab active">
+            {selectedSheets[0]}
+          </button>
+        </div>
+      )}
+      
+      {/* Chart Container */}
+      <div className="chart-container">
         <div
           ref={containerRef}
           style={{
@@ -1301,15 +1311,44 @@ const ExcelToSvg = () => {
             minWidth: '1600px',
             height: '800px',
             border: chartData ? '1px solid #e5e7eb' : 'none',
-            borderRadius: '0 0 8px 8px',
-            marginTop: 0,
             display: loading ? 'none' : 'block',
             overflow: 'auto',
             backgroundColor: 'white',
-            boxShadow: chartData ? '0 2px 10px rgba(0, 0, 0, 0.1)' : 'none'
+            boxShadow: chartData ? '0 2px 4px rgba(0, 0, 0, 0.1)' : 'none'
           }}
         />
       </div>
+      
+      {/* Download Options - Streamlined */}
+      {chartData && !loading && !error && (
+        <div className="download-options">
+          <div className="format-selector">
+            <label htmlFor="format-select">Export as:</label>
+            <select 
+              id="format-select" 
+              value={selectedFormat} 
+              onChange={handleFormatChange}
+              className="format-select"
+            >
+              <option value="svg">SVG</option>
+              <option value="pdf">PDF</option>
+              <option value="png">PNG</option>
+            </select>
+            {(selectedFormat === 'svg' || selectedFormat === 'png') && selectedSheets.length > 1 && (
+              <span className="format-note">
+                Single sheet only
+              </span>
+            )}
+          </div>
+          <button 
+            onClick={handleDownload} 
+            className="download-button"
+          >
+            Download {selectedFormat.toUpperCase()}
+            {selectedSheets.length > 1 && selectedFormat === 'pdf' ? ' (All)' : ''}
+          </button>
+        </div>
+      )}
     </div>
   );
 };
