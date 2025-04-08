@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF Export Test</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+    }
+    .container {
+      width: 100%;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .chart {
+      width: 800px;
+      height: 600px;
+      border: 1px solid #ccc;
+      padding: 20px;
+      box-sizing: border-box;
+      position: relative;
+    }
+    .node {
+      position: absolute;
+      width: 150px;
+      height: 80px;
+      background-color: white;
+      border-radius: 4px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+    }
+    .level0 {
+      border-top: 4px solid #ff7043;
+      top: 20px;
+      left: 325px;
+    }
+    .level1 {
+      border-top: 4px solid #29b6f6;
+      top: 150px;
+      left: 325px;
+    }
+    .level2-1 {
+      border-top: 4px solid #66bb6a;
+      top: 280px;
+      left: 125px;
+    }
+    .level2-2 {
+      border-top: 4px solid #66bb6a;
+      top: 280px;
+      left: 325px;
+    }
+    .level2-3 {
+      border-top: 4px solid #66bb6a;
+      top: 280px;
+      left: 525px;
+    }
+    .name {
+      font-weight: bold;
+      font-size: 14px;
+      margin-bottom: 8px;
+      color: #333;
+    }
+    .title {
+      font-size: 13px;
+      color: #666;
+    }
+    .actions {
+      margin-top: 20px;
+      display: flex;
+      gap: 10px;
+    }
+    button {
+      padding: 10px 15px;
+      background-color: #4e7ae6;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    button:hover {
+      background-color: #3a66d3;
+    }
+    .line {
+      position: absolute;
+      border-left: 2px solid #c7c7c7;
+    }
+    .line1 {
+      height: 50px;
+      top: 100px;
+      left: 400px;
+    }
+    .line2-1 {
+      height: 50px;
+      top: 230px;
+      left: 200px;
+    }
+    .line2-2 {
+      height: 50px;
+      top: 230px;
+      left: 400px;
+    }
+    .line2-3 {
+      height: 50px;
+      top: 230px;
+      left: 600px;
+    }
+    .horizontal-line1 {
+      width: 400px;
+      height: 2px;
+      background-color: #c7c7c7;
+      position: absolute;
+      top: 230px;
+      left: 200px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>PDF Export Test</h1>
+    
+    <div id="chart" class="chart">
+      <!-- Level 0 -->
+      <div class="node level0">
+        <div class="name">Bill Bong</div>
+        <div class="title">CEO</div>
+      </div>
+      
+      <!-- Level 1 -->
+      <div class="node level1">
+        <div class="name">Mike Kraft</div>
+        <div class="title">CTO</div>
+      </div>
+      
+      <!-- Level 2 -->
+      <div class="node level2-1">
+        <div class="name">Lionel Lapidos</div>
+        <div class="title">Developer</div>
+      </div>
+      <div class="node level2-2">
+        <div class="name">Rahaf Elmahdy</div>
+        <div class="title">Designer</div>
+      </div>
+      <div class="node level2-3">
+        <div class="name">Thais Henry-Ramos</div>
+        <div class="title">QA Engineer</div>
+      </div>
+      
+      <!-- Connecting lines -->
+      <div class="line line1"></div>
+      <div class="line line2-1"></div>
+      <div class="line line2-2"></div>
+      <div class="line line2-3"></div>
+      <div class="horizontal-line1"></div>
+    </div>
+    
+    <div class="actions">
+      <button id="download-pdf">Download as PDF</button>
+      <button id="download-png">Download as PNG</button>
+    </div>
+  </div>
+  
+  <script>
+    // Initialize jsPDF
+    const { jsPDF } = window.jspdf;
+    
+    // Function to export as PDF
+    async function exportPDF() {
+      try {
+        // Clone the chart element to avoid modifying the original
+        const chartElement = document.getElementById('chart');
+        const clone = chartElement.cloneNode(true);
+        
+        // Set styles for proper rendering
+        clone.style.position = 'absolute';
+        clone.style.top = '-9999px';
+        clone.style.backgroundColor = 'white';
+        document.body.appendChild(clone);
+        
+        // Generate canvas from the clone
+        const canvas = await html2canvas(clone, {
+          backgroundColor: '#FFFFFF',
+          scale: 2,
+          logging: false,
+          useCORS: true,
+          allowTaint: true
+        });
+        
+        // Remove clone from DOM
+        document.body.removeChild(clone);
+        
+        // Determine orientation based on canvas dimensions
+        const orientation = canvas.width > canvas.height ? 'l' : 'p';
+        
+        // Create PDF with proper dimensions
+        const pdf = new jsPDF(orientation, 'mm', 'a4');
+        
+        // Calculate PDF dimensions
+        const pageWidth = orientation === 'l' ? 297 : 210;
+        
+        // Calculate image dimensions to fit the page
+        const ratio = canvas.height / canvas.width;
+        const imgWidth = pageWidth - 20; // 10mm margins on each side
+        const imgHeight = imgWidth * ratio;
+        
+        // Add the image to the PDF
+        pdf.addImage(
+          canvas.toDataURL('image/jpeg', 1.0),
+          'JPEG',
+          10, // Left margin
+          10, // Top margin
+          imgWidth,
+          imgHeight
+        );
+        
+        // Save the PDF
+        pdf.save('test-chart.pdf');
+      } catch (error) {
+        console.error('Error generating PDF:', error);
+        alert('Error generating PDF: ' + error.message);
+      }
+    }
+    
+    // Function to export as PNG
+    async function exportPNG() {
+      try {
+        // Clone the chart element to avoid modifying the original
+        const chartElement = document.getElementById('chart');
+        const clone = chartElement.cloneNode(true);
+        
+        // Set styles for proper rendering
+        clone.style.position = 'absolute';
+        clone.style.top = '-9999px';
+        clone.style.backgroundColor = 'white';
+        document.body.appendChild(clone);
+        
+        // Generate canvas from the clone
+        const canvas = await html2canvas(clone, {
+          backgroundColor: '#FFFFFF',
+          scale: 2,
+          logging: false,
+          useCORS: true,
+          allowTaint: true
+        });
+        
+        // Remove clone from DOM
+        document.body.removeChild(clone);
+        
+        // Get PNG data
+        const pngUrl = canvas.toDataURL('image/png');
+        
+        // Download PNG
+        const downloadLink = document.createElement('a');
+        downloadLink.href = pngUrl;
+        downloadLink.download = 'test-chart.png';
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+      } catch (error) {
+        console.error('Error generating PNG:', error);
+        alert('Error generating PNG: ' + error.message);
+      }
+    }
+    
+    // Add event listeners to buttons
+    document.getElementById('download-pdf').addEventListener('click', exportPDF);
+    document.getElementById('download-png').addEventListener('click', exportPNG);
+  </script>
+</body>
+</html> 

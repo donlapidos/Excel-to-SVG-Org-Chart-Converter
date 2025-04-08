@@ -1,5 +1,5 @@
 import React from 'react';
-import ExcelToSvg from './components/ExcelToSvg';
+import ExcelProcessor from './components/ExcelProcessor';
 import './App.css';
 
 function App() {
@@ -11,7 +11,7 @@ function App() {
       
       <main className="app-main">
         <div className="app-card">
-          <ExcelToSvg />
+          <ExcelProcessor />
         </div>
       </main>
       

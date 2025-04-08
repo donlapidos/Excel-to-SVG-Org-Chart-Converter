@@ -1,0 +1,3 @@
+[33m45a84d5[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mpdf-export-feature[m[33m)[m Fix hierarchical rendering and PDF export scaling
+[33m6535902[m Improve consolidated box layout and fix overflow issues
+[33m18aa495[m[33m ([m[1;31morigin/pdf-export-feature[m[33m)[m Update README and styles for export features
