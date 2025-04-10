@@ -2,18 +2,15 @@
 
 A React-based web application that converts Excel (.xlsx, .xls) and CSV files into SVG organizational charts with customizable styling.
 
-## Demo
-
-Try it out: [Excel to SVG Org Chart Converter Live Demo](https://donlapidos.github.io/Excel-to-SVG-Org-Chart-Converter/)
-
 ## Features
 
 - Upload Excel (.xlsx, .xls) or CSV files
+- Select and process multiple sheets at once
 - Case-insensitive column name matching
 - Automatic hierarchy detection
 - Color-coded organizational levels
 - Custom styling for nodes
-- SVG download functionality
+- Export to SVG, PNG, or PDF formats
 - Responsive design
 
 ## Installation
