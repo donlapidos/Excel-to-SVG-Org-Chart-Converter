@@ -95,13 +95,13 @@ const ExcelProcessor = () => {
         handleDownload(null, processedChartData, targetSheet, format, fileName);
       } else {
         // For SVG and PNG, we need the DOM container
-        const chartContainer = document.querySelector('.chart-content');
-        if (!chartContainer) {
-          setError('Chart container not found');
+        const chartRenderer = document.querySelector('.chart-renderer');
+        if (!chartRenderer) {
+          setError('Chart renderer element not found');
           return;
         }
         
-        handleDownload(chartContainer, processedChartData, targetSheet, format, fileName);
+        handleDownload(chartRenderer, processedChartData, targetSheet, format, fileName);
       }
       
       setSuccess(`Chart exported as ${format.toUpperCase()} successfully!`);

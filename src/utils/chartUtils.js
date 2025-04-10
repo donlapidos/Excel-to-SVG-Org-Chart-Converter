@@ -83,6 +83,25 @@ export const defaultNodeContent = (d) => {
         overflow: hidden;
       ">`;
     
+    // Only show the title section if title is present
+    // (We've made title empty for consolidated nodes so this section will be skipped)
+    if (d.data.title) {
+      content += `
+        <div style="
+          width: 100%;
+          margin-bottom: 10px;
+          text-align: center;
+        ">
+          <div style="
+            font-size: 12px;
+            color: #777;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          ">${d.data.title}</div>
+        </div>`;
+    }
+    
     directReports.forEach((report, index) => {
       content += `
         <div style="
@@ -189,4 +208,71 @@ export const validateChartData = (data) => {
   }
   
   return null;
-}; 
+};
+
+// Function that renders a node based on the provided data
+export function renderNode(nodeGroup, nodeData, nodeWidth, nodeHeight) {
+  // Clear previous content
+  nodeGroup.selectAll('*').remove();
+  
+  // Add the rectangle for the node
+  nodeGroup.append('rect')
+    .attr('width', nodeWidth)
+    .attr('height', nodeHeight)
+    .attr('rx', 5)
+    .attr('ry', 5)
+    .attr('fill', nodeData.isConsolidated ? '#f0f8ff' : '#e8f4f8')
+    .attr('stroke', '#ccc')
+    .attr('stroke-width', 1);
+
+  // Add the name text
+  const nameText = nodeGroup.append('text')
+    .attr('x', nodeWidth / 2)
+    .attr('y', nodeHeight * 0.3)
+    .attr('text-anchor', 'middle')
+    .attr('class', 'name-text')
+    .style('font-weight', 'bold')
+    .style('font-size', '14px');
+
+  // Render name differently for consolidated nodes
+  if (nodeData.isConsolidated) {
+    // For consolidated nodes, keep it simple
+    nameText.text('Team Members');
+  } else {
+    // For regular nodes, display the name
+    nameText.text(nodeData.name);
+  }
+
+  // Add the title text
+  nodeGroup.append('text')
+    .attr('x', nodeWidth / 2)
+    .attr('y', nodeHeight * 0.6)
+    .attr('text-anchor', 'middle')
+    .attr('class', 'title-text')
+    .style('font-size', '12px')
+    .text(nodeData.title);
+}
+
+// Function to render links between nodes
+export function renderLinks(svg, links, nodeWidth, nodeHeight) {
+  // Create a path generator for the links
+  svg.selectAll('.link').remove();
+
+  svg.selectAll('.link')
+    .data(links)
+    .enter()
+    .append('path')
+    .attr('class', 'link')
+    .attr('d', d => {
+      const sourceX = d.source.x + nodeWidth / 2;
+      const sourceY = d.source.y + nodeHeight;
+      const targetX = d.target.x + nodeWidth / 2;
+      const targetY = d.target.y;
+
+      // Create a path with a curve
+      return `M${sourceX},${sourceY} C${sourceX},${sourceY + 40} ${targetX},${targetY - 40} ${targetX},${targetY}`;
+    })
+    .attr('fill', 'none')
+    .attr('stroke', '#999')
+    .attr('stroke-width', 1.5);
+} 

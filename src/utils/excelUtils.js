@@ -202,10 +202,11 @@ export const prepareConsolidatedData = (data) => {
     if (individualReports.length > 0) {
       const consolidatedNode = {
         id: `consolidated_${manager.id}`,
-        name: '',
-        title: '',
+        name: '', // Empty string for name
+        title: '', // Empty string for title, removing the manager name completely
         parentId: manager.id,
-        _directReports: individualReports
+        _directReports: individualReports,
+        isConsolidated: true
       };
       
       consolidatedData.push(consolidatedNode);

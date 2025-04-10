@@ -65,8 +65,14 @@ export const handleDownload = async (container, chartData, selectedSheets, forma
 export const exportToSvg = (container, filename = 'org-chart') => {
   return new Promise((resolve, reject) => {
     try {
-      // Find the SVG element
-      const svgEl = container.querySelector('svg');
+      // Find the chart-content element first
+      const chartContent = container.querySelector('.chart-content');
+      if (!chartContent) {
+        throw new Error('Chart content element not found');
+      }
+      
+      // Find the SVG element within the chart content
+      const svgEl = chartContent.querySelector('svg');
       if (!svgEl) {
         throw new Error('SVG element not found');
       }
@@ -136,101 +142,48 @@ export const exportToSvg = (container, filename = 'org-chart') => {
  * Export the chart as a PNG image using html2canvas
  * @param {HTMLElement} container - The chart container
  * @param {String} filename - Name for the exported file
- * @param {Number} exportWidth - Width for the exported image
- * @param {Number} exportHeight - Height for the exported image
  */
-export const exportToPng = (container, filename = 'org-chart', exportWidth = 1600, exportHeight = 900) => {
+export const exportToPng = (container, filename = 'org-chart') => {
   return new Promise((resolve, reject) => {
     try {
-      // Find the SVG element
-      const svgEl = container.querySelector('svg');
-      if (!svgEl) {
-        throw new Error('SVG element not found');
+      // Ensure the chart is visible and properly laid out
+      const chartContent = container.querySelector('.chart-content');
+      if (!chartContent) {
+        throw new Error('Chart content element not found');
       }
       
-      // Create a temporary container for the chart to be captured
-      const tempContainer = document.createElement('div');
-      tempContainer.style.position = 'absolute';
-      tempContainer.style.left = '-9999px';
-      tempContainer.style.top = '-9999px';
-      tempContainer.style.width = `${exportWidth}px`;
-      tempContainer.style.height = `${exportHeight}px`;
-      tempContainer.style.background = 'white';
-      tempContainer.style.overflow = 'hidden';
-      document.body.appendChild(tempContainer);
-      
-      // Clone the SVG into the temporary container
-      const svgClone = svgEl.cloneNode(true);
-      tempContainer.appendChild(svgClone);
-      
-      // Get chart content element for scaling
-      const chartContent = svgClone.querySelector('.chart-content');
-      if (chartContent) {
-        // Apply optimal scaling
-        const svgWidth = svgClone.clientWidth || parseInt(svgClone.getAttribute('width'));
-        const svgHeight = svgClone.clientHeight || parseInt(svgClone.getAttribute('height'));
+      // Use html2canvas directly on the chart content element with optimized settings
+      html2canvas(chartContent, {
+        backgroundColor: 'white',
+        scale: 2, // Higher resolution
+        useCORS: true,
+        allowTaint: true,
+        logging: false
+      }).then(canvas => {
+        // Get PNG data
+        const pngUrl = canvas.toDataURL('image/png');
         
-        if (svgWidth && svgHeight) {
-          // Calculate scale to fit while maintaining aspect ratio
-          const scale = Math.min(
-            exportWidth / svgWidth,
-            exportHeight / svgHeight
-          ) * 0.9; // Add a small margin
-          
-          // Center the chart
-          const translateX = (exportWidth - (svgWidth * scale)) / 2;
-          const translateY = (exportHeight - (svgHeight * scale)) / 2;
-          
-          // Apply new transform
-          chartContent.setAttribute('transform', `translate(${translateX}, ${translateY}) scale(${scale})`);
-        }
-      }
-      
-      // Wait for positioning to take effect
-      setTimeout(async () => {
-        try {
-          // Use html2canvas with optimized settings
-          const canvas = await html2canvas(tempContainer, {
-            backgroundColor: 'white',
-            scale: 2, // Higher resolution
-            useCORS: true,
-            allowTaint: true,
-            logging: false,
-            width: exportWidth,
-            height: exportHeight,
-            windowWidth: exportWidth,
-            windowHeight: exportHeight,
-            onclone: (clonedDoc) => {
-              // Add additional styling to ensure SVG renders properly
-              const clonedContainer = clonedDoc.body.querySelector('div');
-              if (clonedContainer) {
-                clonedContainer.style.background = 'white';
-                clonedContainer.style.width = `${exportWidth}px`;
-                clonedContainer.style.height = `${exportHeight}px`;
-              }
-            }
-          });
-          
-          // Get PNG data
-          const pngUrl = canvas.toDataURL('image/png');
-          
-          // Create download link
-          const downloadLink = document.createElement('a');
-          downloadLink.href = pngUrl;
-          downloadLink.download = `${filename}.png`;
-          document.body.appendChild(downloadLink);
-          downloadLink.click();
+        // Create download link
+        const downloadLink = document.createElement('a');
+        downloadLink.href = pngUrl;
+        downloadLink.download = `${filename}.png`;
+        downloadLink.style.display = 'none';
+        document.body.appendChild(downloadLink);
+        
+        // Trigger download
+        downloadLink.click();
+        
+        // Clean up
+        setTimeout(() => {
           document.body.removeChild(downloadLink);
-          
-          // Clean up
-          document.body.removeChild(tempContainer);
           resolve();
-        } catch (err) {
-          document.body.removeChild(tempContainer);
-          reject(err);
-        }
-      }, 1000);
+        }, 100);
+      }).catch(err => {
+        console.error('PNG export error:', err);
+        reject(err);
+      });
     } catch (err) {
+      console.error('PNG export setup error:', err);
       reject(err);
     }
   });
@@ -247,11 +200,11 @@ export const exportToPdf = (chartData, sheetName = 'Org Chart', filename = 'org-
     try {
       console.log(`Exporting PDF for "${sheetName}" with ${chartData.length} nodes`);
       
-      // Create a new PDF document (landscape for wider org charts)
+      // Create a new PDF document with larger format for org charts
       const pdf = new jsPDF({
         orientation: 'landscape',
         unit: 'mm',
-        format: 'a4'
+        format: 'a2' // Changed from a4 to a2 for much larger charts
       });
       
       // Define dimensions
@@ -311,21 +264,41 @@ export const exportToPdf = (chartData, sheetName = 'Org Chart', filename = 'org-
       console.log(`Chart has ${maxLevel + 1} levels, organizing layout...`);
       
       // Calculate box dimensions
-      const margin = 10;
+      const margin = 15; // Reduced margin for better use of space
       const availableWidth = pageWidth - (margin * 2);
-      const availableHeight = pageHeight - (margin * 2) - 10; // Account for title
+      const availableHeight = pageHeight - (margin * 2) - 15; // Account for title
       
       // Find the level with the most nodes
       const numNodesWidest = Math.max(...Object.values(nodesByLevel).map(level => level.length));
       
-      // Calculate box dimensions to fit the chart on one page
-      const boxWidth = Math.min(60, availableWidth / (numNodesWidest + 1));
-      const verticalSpace = availableHeight - 5; // space after title
-      const boxHeight = Math.min(25, verticalSpace / (maxLevel + 2)); // +2 for margins
+      // Get total nodes in the chart (including hidden/consolidated ones)
+      const consolidatedNodeCount = Object.values(nodesByLevel).flat().filter(node => node.isConsolidated).length;
       
-      const horizontalSpacing = Math.min(15, (availableWidth - (boxWidth * numNodesWidest)) / Math.max(1, numNodesWidest - 1));
-      const verticalSpacing = Math.min(35, (verticalSpace - (boxHeight * (maxLevel + 1))) / Math.max(1, maxLevel));
+      // Adjust spacing based on node density - more nodes means reduced spacing factor
+      const totalNodes = Object.values(nodesByLevel).flat().length;
       
+      // Calculate chart dimensions
+      const levelCount = maxLevel + 1;
+      
+      // Optimal box height calculation - smaller when there are many levels
+      const boxHeight = Math.max(20, Math.min(30, 40 - (levelCount * 0.8)));
+      
+      // Calculate spacing adjustment factor - fewer levels means more compact
+      const spacingAdjustment = Math.max(0.5, Math.min(0.8, 
+        0.9 - (0.05 * Math.log(totalNodes + 1)) - (consolidatedNodeCount > 0 ? 0.1 * Math.log(consolidatedNodeCount + 1) : 0)
+      ));
+      
+      // Calculate vertical spacing - more compact with fewer levels
+      const verticalSpacing = Math.min(25, 
+        Math.max(10, (availableHeight - (boxHeight * levelCount)) / Math.max(1, levelCount + 1) * spacingAdjustment)
+      );
+      
+      // Calculate box width based on the level with the most nodes
+      const boxWidth = Math.min(100, Math.max(60, availableWidth / (numNodesWidest + 0.5)));
+      
+      // Calculate horizontal spacing
+      const horizontalSpacing = Math.min(15, (availableWidth - (boxWidth * numNodesWidest)) / Math.max(1, numNodesWidest));
+
       let startY = margin + 15; // Start position after title
       
       // Track node positions for drawing connections
@@ -350,7 +323,7 @@ export const exportToPdf = (chartData, sheetName = 'Org Chart', filename = 'org-
         
         nodes.forEach(node => {
           try {
-            // Use level colors
+            // Get level color for this node
             const levelColor = levelColors[level] || levelColors.default;
             
             const hexColor = levelColor.substring(1); // Remove #
@@ -358,11 +331,23 @@ export const exportToPdf = (chartData, sheetName = 'Org Chart', filename = 'org-
             const g = parseInt(hexColor.substring(2, 4), 16);
             const b = parseInt(hexColor.substring(4, 6), 16);
             
+            // Calculate box dimensions - for consolidated nodes, make them larger
+            let nodeBoxHeight = boxHeight;
+            const hasDirectReports = node._directReports && node._directReports.length > 0;
+            
+            if (hasDirectReports) {
+              // Increase height based on number of direct reports (more compact)
+              nodeBoxHeight = Math.min(
+                boxHeight * 2, // Don't let it get too large
+                boxHeight + (node._directReports.length * 6) // Reduced height per report (was 10)
+              );
+            }
+            
             // Draw node box
             pdf.setDrawColor(200, 200, 200);
             pdf.setLineWidth(0.2);
             pdf.setFillColor(255, 255, 255);
-            pdf.roundedRect(currentX, levelY, boxWidth, boxHeight, 1, 1, 'FD');
+            pdf.roundedRect(currentX, levelY, boxWidth, nodeBoxHeight, 1, 1, 'FD');
             
             // Draw the colored top border
             pdf.setFillColor(r, g, b);
@@ -370,35 +355,94 @@ export const exportToPdf = (chartData, sheetName = 'Org Chart', filename = 'org-
             
             const textX = currentX + (boxWidth / 2);
             
-            // Add name with better formatting
-            pdf.setFontSize(8);
-            pdf.setTextColor(0, 0, 0);
-            pdf.setFont(undefined, 'bold');
-            
-            // Draw name and handle overflow with ellipsis if needed
-            const nameText = node.name || 'Unnamed';
-            pdf.text(nameText, textX, levelY + 8, { 
-              align: 'center',
-              maxWidth: boxWidth - 4
-            });
-            
-            // Add title
-            pdf.setFontSize(6.5);
-            pdf.setTextColor(100, 100, 100);
-            pdf.setFont(undefined, 'normal');
-            
-            // Draw title and handle overflow
-            const titleText = node.title || '';
-            pdf.text(titleText, textX, levelY + 14, { 
-              align: 'center',
-              maxWidth: boxWidth - 4
-            });
+            if (hasDirectReports) {
+              // For consolidated nodes, draw each direct report
+              // Skip the "X Direct Reports" header and start directly with the reports
+              // Just render a thin divider line at the top
+              pdf.setDrawColor(230, 230, 230);
+              pdf.setLineWidth(0.1);
+              
+              // Show only the "Reporting to" subheader
+              if (node.title) {
+                pdf.setFontSize(6.5);
+                pdf.setTextColor(100, 100, 100);
+                pdf.setFont(undefined, 'italic');
+                pdf.text(node.title, textX, levelY + 8, { 
+                  align: 'center',
+                  maxWidth: boxWidth - 4
+                });
+              }
+              
+              // Then draw each direct report with a separator - more compact layout
+              let yOffset = levelY + (node.title ? 15 : 10); // Start position adjusted based on title
+              node._directReports.forEach((report, index) => {
+                // Draw separator line except for first item
+                if (index > 0) {
+                  pdf.setDrawColor(230, 230, 230);
+                  pdf.setLineWidth(0.1);
+                  pdf.line(
+                    currentX + 5, 
+                    yOffset - 2, // Reduced spacing
+                    currentX + boxWidth - 5, 
+                    yOffset - 2
+                  );
+                }
+                
+                // Draw name with better formatting
+                pdf.setFontSize(7);
+                pdf.setTextColor(0, 0, 0);
+                pdf.setFont(undefined, 'bold');
+                pdf.text(report.name || 'Unnamed', textX, yOffset, { 
+                  align: 'center',
+                  maxWidth: boxWidth - 8
+                });
+                
+                // Add title with more compact spacing
+                pdf.setFontSize(6);
+                pdf.setTextColor(100, 100, 100);
+                pdf.setFont(undefined, 'normal');
+                
+                if (report.title) {
+                  pdf.text(report.title, textX, yOffset + 4, { // Reduced spacing (was 5)
+                    align: 'center',
+                    maxWidth: boxWidth - 8
+                  });
+                  yOffset += 7; // Reduced spacing (was 10)
+                } else {
+                  yOffset += 5; // Reduced spacing (was 7)
+                }
+              });
+            } else {
+              // Standard node - draw name and title
+              pdf.setFontSize(8);
+              pdf.setTextColor(0, 0, 0);
+              pdf.setFont(undefined, 'bold');
+              
+              // Draw name and handle overflow with ellipsis if needed
+              const nameText = node.name || 'Unnamed';
+              pdf.text(nameText, textX, levelY + 8, { 
+                align: 'center',
+                maxWidth: boxWidth - 4
+              });
+              
+              // Add title
+              pdf.setFontSize(6.5);
+              pdf.setTextColor(100, 100, 100);
+              pdf.setFont(undefined, 'normal');
+              
+              // Draw title and handle overflow
+              const titleText = node.title || '';
+              pdf.text(titleText, textX, levelY + 14, { 
+                align: 'center',
+                maxWidth: boxWidth - 4
+              });
+            }
             
             // Store node position for drawing connections
             nodePositions[node.id] = {
               x: currentX + (boxWidth / 2),
               y: levelY,
-              height: boxHeight
+              height: nodeBoxHeight
             };
             
             // Move to next position
@@ -426,14 +470,17 @@ export const exportToPdf = (chartData, sheetName = 'Org Chart', filename = 'org-
           const endX = child.x;
           const endY = child.y;
           
-          // Draw vertical line down from parent
-          pdf.line(startX, startY, startX, startY + (verticalSpacing / 3));
+          // Use an even shorter first vertical segment (1/8 instead of 1/5)
+          const connectorY = startY + (verticalSpacing / 8);
+          
+          // Draw vertical line down from parent (shorter)
+          pdf.line(startX, startY, startX, connectorY);
           
           // Draw horizontal line to align with child's x position
-          pdf.line(startX, startY + (verticalSpacing / 3), endX, startY + (verticalSpacing / 3));
+          pdf.line(startX, connectorY, endX, connectorY);
           
           // Draw vertical line to child
-          pdf.line(endX, startY + (verticalSpacing / 3), endX, endY);
+          pdf.line(endX, connectorY, endX, endY);
         }
       });
       

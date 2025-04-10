@@ -49,7 +49,7 @@ const ChartRenderer = ({
       // Create chart instance
       const chart = createOrgChart(containerRef.current);
       
-      // Set node content
+      // Set default node content renderer
       chart.nodeContent(defaultNodeContent);
       
       // Store chart reference for later use (e.g., export)
