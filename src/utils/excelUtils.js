@@ -92,10 +92,15 @@ export const processSheetData = (jsonData, sheetName) => {
   orgChartData.forEach(item => {
     if (item.reportsTo) {
       const parentName = item.reportsTo.trim();
-      item.parentId = nameToId[parentName];
-      
-      if (!item.parentId) {
-        console.warn(`Could not find parent "${parentName}" for "${item.name}" in sheet "${sheetName}"`);
+      // Check if "reports to" is null, NULL, Null, empty, etc. and treat them as root nodes
+      if (parentName.toLowerCase() === 'null' || parentName === '' || parentName.toLowerCase() === 'none') {
+        item.parentId = null;
+      } else {
+        item.parentId = nameToId[parentName];
+        
+        if (!item.parentId) {
+          console.warn(`Could not find parent "${parentName}" for "${item.name}" in sheet "${sheetName}"`);
+        }
       }
     } else {
       item.parentId = null; // Explicitly set to null for root node

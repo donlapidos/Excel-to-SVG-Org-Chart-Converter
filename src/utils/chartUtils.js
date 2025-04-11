@@ -115,9 +115,29 @@ export const createOrgChart = (container, width = 1600, height = 800) => {
  * @returns {String} HTML content for the node
  */
 export const defaultNodeContent = (d) => {
+  // Defensive check for undefined data
+  if (!d || !d.data) {
+    return `
+      <div style="
+        height: 100%;
+        width: 100%;
+        border-radius: 8px;
+        background-color: #f5f5f5;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 10px;
+        text-align: center;
+      ">
+        <div style="color: #999;">No data available</div>
+      </div>
+    `;
+  }
+  
   // Handle department nodes
   if (d.data.isDepartment) {
-    const departmentColor = getDepartmentColor(d.data.name);
+    const departmentName = d.data.name || 'Unknown Department';
+    const departmentColor = getDepartmentColor(departmentName);
     
     return `
       <div style="
@@ -145,7 +165,7 @@ export const defaultNodeContent = (d) => {
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-          ">${d.data.name} Department</div>
+          ">${departmentName} Department</div>
         </div>
         <div style="
           padding: 10px 16px;
@@ -170,7 +190,7 @@ export const defaultNodeContent = (d) => {
   // If this is a consolidated node with direct reports
   if (directReports.length > 0) {
     // Determine if we need to show department information
-    const department = d.data.department || '';
+    const department = (d.data.department || '').trim();
     const departmentColor = department ? getDepartmentColor(department) : levelColors[2];
     
     // Create a box with stacked direct reports
@@ -211,6 +231,9 @@ export const defaultNodeContent = (d) => {
     }
     
     directReports.forEach((report, index) => {
+      const reportName = report.name || 'Unnamed';
+      const reportTitle = report.title || '';
+      
       content += `
         <div style="
           width: 100%;
@@ -227,7 +250,7 @@ export const defaultNodeContent = (d) => {
             overflow: hidden;
             text-overflow: ellipsis;
             text-align: center;
-          ">${report.name}</div>
+          ">${reportName}</div>
           <div style="
             font-size: 12px;
             color: #666;
@@ -235,7 +258,7 @@ export const defaultNodeContent = (d) => {
             overflow: hidden;
             text-overflow: ellipsis;
             text-align: center;
-          ">${report.title || ''}</div>
+          ">${reportTitle}</div>
         </div>
       `;
     });
@@ -245,8 +268,11 @@ export const defaultNodeContent = (d) => {
   }
 
   // Determine if this node is a manager with department information
+  const name = d.data.name || 'Unnamed';
+  const title = d.data.title || '';
   const hasDepartment = d.data.department && d.data.department.trim() !== '';
   const departmentColor = hasDepartment ? getDepartmentColor(d.data.department) : null;
+  const nodeDepth = typeof d.depth === 'number' ? d.depth : 0;
   
   // Standard node (typically a manager)
   return `
@@ -262,7 +288,7 @@ export const defaultNodeContent = (d) => {
       ${hasDepartment ? `border-left: 3px solid ${departmentColor}; border-right: 3px solid ${departmentColor};` : ''}
     ">
       <div style="
-        background-color: ${levelColors[d.depth] || levelColors.default};
+        background-color: ${levelColors[nodeDepth] || levelColors.default};
         padding: 12px 16px;
         text-align: center;
       ">
@@ -273,7 +299,7 @@ export const defaultNodeContent = (d) => {
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
-        ">${d.data.name}</div>
+        ">${name}</div>
       </div>
       <div style="
         padding: 12px 16px;
@@ -290,7 +316,7 @@ export const defaultNodeContent = (d) => {
           color: #555;
           font-weight: 400;
           ${hasDepartment ? 'margin-bottom: 6px;' : ''}
-        ">${d.data.title || ''}</div>
+        ">${title}</div>
         
         ${hasDepartment ? `
           <div style="

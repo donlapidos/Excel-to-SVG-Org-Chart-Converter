@@ -84,6 +84,19 @@ const ChartRenderer = ({
     try {
       console.log(`Rendering org chart for "${currentSheet}" with ${data.length} nodes`);
       
+      // Check if there are any nodes
+      if (!Array.isArray(data) || data.length === 0) {
+        setError("No valid data to render chart");
+        return;
+      }
+      
+      // Make sure we have at least one root node
+      const rootNodes = data.filter(node => !node.parentId);
+      if (rootNodes.length === 0) {
+        setError("No root nodes found in the data. Make sure at least one person has no manager.");
+        return;
+      }
+      
       // Update department count for display
       const departments = data.filter(node => node.isDepartment);
       setDepartmentCount(departments.length);
@@ -111,12 +124,21 @@ const ChartRenderer = ({
           .childrenMargin(() => 40);
       }
       
+      // Extra defensive measures to prevent rendering errors
+      const safeData = data.map(item => ({
+        ...item,
+        id: String(item.id || ''),
+        parentId: item.parentId ? String(item.parentId) : null,
+        name: item.name || 'Unnamed',
+        title: item.title || ''
+      }));
+      
       // Store chart reference for later use (e.g., export)
       chartRef.current = chart;
       
       // Render the chart
       chart
-        .data(data)
+        .data(safeData)
         .render();
         
       // Expand all nodes with a delay to ensure proper rendering
@@ -129,9 +151,85 @@ const ChartRenderer = ({
       }, 1000);
     } catch (err) {
       console.error('Error rendering chart:', err);
-      setError(`Error rendering chart: ${err.message}`);
+      setError(`Error rendering chart: ${err.message}. Please check the data format.`);
+      
+      // Display fallback representation
+      renderFallbackChart(data);
     }
   }, [currentSheet, chartData, chartStats]);
+  
+  // Fallback chart rendering when d3 chart fails
+  const renderFallbackChart = (data) => {
+    if (!containerRef.current || !data) return;
+    
+    try {
+      const div = document.createElement('div');
+      div.className = 'fallback-chart';
+      div.style.padding = '20px';
+      div.style.maxHeight = '600px';
+      div.style.overflowY = 'auto';
+      
+      const rootNodes = data.filter(node => !node.parentId);
+      
+      if (rootNodes.length > 0) {
+        rootNodes.forEach(rootNode => {
+          const rootElement = createNodeElement(rootNode, data);
+          div.appendChild(rootElement);
+        });
+      } else {
+        // Just show all nodes in a list if we can't determine hierarchy
+        const heading = document.createElement('h4');
+        heading.textContent = 'Organization Members:';
+        div.appendChild(heading);
+        
+        const list = document.createElement('ul');
+        data.forEach(node => {
+          const item = document.createElement('li');
+          item.textContent = `${node.name}${node.title ? ` - ${node.title}` : ''}`;
+          list.appendChild(item);
+        });
+        div.appendChild(list);
+      }
+      
+      clearContainer(containerRef.current);
+      containerRef.current.appendChild(div);
+    } catch (err) {
+      console.error('Error rendering fallback chart:', err);
+    }
+  };
+  
+  // Create a node element for the fallback chart
+  const createNodeElement = (node, allNodes) => {
+    const container = document.createElement('div');
+    container.className = 'fallback-node';
+    container.style.marginBottom = '10px';
+    
+    const header = document.createElement('div');
+    header.style.fontWeight = 'bold';
+    header.style.padding = '5px 10px';
+    header.style.backgroundColor = '#f0f0f0';
+    header.style.borderRadius = '4px';
+    header.textContent = `${node.name}${node.title ? ` - ${node.title}` : ''}`;
+    container.appendChild(header);
+    
+    // Find direct reports
+    const directReports = allNodes.filter(n => n.parentId === node.id);
+    
+    if (directReports.length > 0) {
+      const childrenContainer = document.createElement('div');
+      childrenContainer.style.paddingLeft = '20px';
+      childrenContainer.style.marginTop = '5px';
+      
+      directReports.forEach(report => {
+        const childElement = createNodeElement(report, allNodes);
+        childrenContainer.appendChild(childElement);
+      });
+      
+      container.appendChild(childrenContainer);
+    }
+    
+    return container;
+  };
 
   // Sheet selection UI
   const renderSheetTabs = () => {
