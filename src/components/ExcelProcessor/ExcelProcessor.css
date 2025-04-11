@@ -473,15 +473,49 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 15px 20px;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
   border-bottom: 1px solid #eaeaea;
 }
 
+.chart-header-left {
+  display: flex;
+  flex-direction: column;
+}
+
 .chart-title {
-  font-size: 1.2rem;
   margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
   color: #333;
+}
+
+.chart-stats {
+  display: flex;
+  gap: 15px;
+  margin-top: 8px;
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.stat-item {
+  display: inline-flex;
+  align-items: center;
+}
+
+.stat-label {
   font-weight: 500;
+  margin-right: 4px;
+  color: #555;
+}
+
+.large-indicator {
+  background-color: #ffecb3;
+  color: #ff8f00;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+  font-size: 0.8rem;
 }
 
 .chart-content {
@@ -615,7 +649,6 @@
   .chart-header {
     flex-direction: column;
     align-items: flex-start;
-    gap: 10px;
   }
   
   .export-options {
@@ -635,6 +668,21 @@
   .chart-content {
     padding: 10px;
     min-height: 400px;
+  }
+  
+  .chart-stats {
+    margin-top: 10px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+  }
+  
+  .department-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .department-badge {
+    margin-top: 5px;
   }
 }
 
@@ -670,4 +718,68 @@
   background-color: rgba(244, 67, 54, 0.1);
   color: #d32f2f;
   border: 1px solid rgba(244, 67, 54, 0.2);
+}
+
+/* Department visualization styles */
+.department-group {
+  position: relative;
+  border-radius: 12px;
+  padding: 10px;
+  margin: 5px 0;
+  transition: background-color 0.2s ease;
+}
+
+.department-group:hover {
+  background-color: rgba(0, 0, 0, 0.02);
+}
+
+.department-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px dashed #e0e0e0;
+}
+
+.department-name {
+  font-weight: 600;
+  font-size: 1rem;
+  color: #333;
+}
+
+.department-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: white;
+  background-color: #4caf50;
+}
+
+/* Department-specific node styling */
+.department-node {
+  border: 2px solid;
+  border-radius: 8px;
+}
+
+.marketing-dept {
+  border-color: #8bc34a;
+}
+
+.sales-dept {
+  border-color: #03a9f4;
+}
+
+.engineering-dept {
+  border-color: #ff5722;
+}
+
+.hr-dept {
+  border-color: #2196f3;
+}
+
+.finance-dept {
+  border-color: #009688;
 } 

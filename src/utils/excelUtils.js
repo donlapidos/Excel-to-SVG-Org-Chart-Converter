@@ -64,6 +64,7 @@ export const processSheetData = (jsonData, sheetName) => {
     const name = findColumn(row, 'name') || '';
     const title = findColumn(row, 'title') || '';
     const reportsTo = findColumn(row, 'reports to') || '';
+    const department = findColumn(row, 'department') || '';
     
     if (!name) {
       console.warn(`Row ${index} has no name in sheet "${sheetName}"`);
@@ -73,7 +74,8 @@ export const processSheetData = (jsonData, sheetName) => {
       id: index.toString(),
       name,
       title,
-      reportsTo
+      reportsTo,
+      department
     };
   });
 
@@ -159,7 +161,7 @@ export const readExcelFile = (file) => {
 /**
  * Prepares hierarchical data for the org chart with consolidated structure
  * @param {Array} data - Raw org chart data
- * @returns {Array} Data with consolidated direct reports
+ * @returns {Array} Data with consolidated direct reports and department structure
  */
 export const prepareConsolidatedData = (data) => {
   if (!data || data.length === 0) {
@@ -178,13 +180,87 @@ export const prepareConsolidatedData = (data) => {
     return data.filter(node => node.parentId === managerId);
   };
 
+  // Collect all unique departments
+  const departments = new Map();
+  const departmentHeads = new Map();
+  
+  // First pass: identify departments and their heads
+  data.forEach(person => {
+    if (person.department && person.department.trim() !== '') {
+      const deptName = person.department.trim();
+      
+      // Check if this person is a department head
+      // A department head is someone with a department who has direct reports
+      // that also belong to the same department
+      const directReports = getDirectReports(person.id);
+      const isDepartmentHead = directReports.some(
+        report => report.department === deptName
+      );
+      
+      if (isDepartmentHead) {
+        departmentHeads.set(deptName, person);
+      }
+      
+      // Keep track of all departments
+      if (!departments.has(deptName)) {
+        departments.set(deptName, {
+          name: deptName,
+          members: [],
+          head: isDepartmentHead ? person : null
+        });
+      }
+      
+      // Add person to department members
+      departments.get(deptName).members.push(person);
+      
+      // Update department head if this is one
+      if (isDepartmentHead) {
+        departments.get(deptName).head = person;
+      }
+    }
+  });
+  
+  console.log(`Found ${departments.size} departments:`, Array.from(departments.keys()));
+  
   // Create a new dataset with consolidated structure
   const consolidatedData = [];
+  const departmentNodes = new Map();
+  
+  // Create department nodes with unique IDs
+  departments.forEach((dept, deptName) => {
+    if (dept.head) {
+      const departmentNode = {
+        id: `dept_${dept.head.id}`,
+        name: deptName,
+        title: 'Department',
+        parentId: dept.head.parentId, // Department reports to the same person as its head
+        isDepartment: true,
+        departmentHead: dept.head.id,
+        departmentMembers: dept.members.map(m => m.id)
+      };
+      
+      departmentNodes.set(deptName, departmentNode);
+    }
+  });
   
   // Function to add a manager and their direct reports to the consolidated data
   const addManagerAndDirectReports = (manager) => {
     // Add the manager node
     consolidatedData.push({...manager});
+    
+    // If this manager is a department head, add the department node first
+    if (manager.department && departmentHeads.get(manager.department.trim()) === manager) {
+      const deptNode = departmentNodes.get(manager.department.trim());
+      if (deptNode) {
+        consolidatedData.push(deptNode);
+        
+        // Update the manager to report to the department
+        const managerIndex = consolidatedData.findIndex(n => n.id === manager.id);
+        if (managerIndex !== -1) {
+          consolidatedData[managerIndex].parentId = deptNode.id;
+        }
+      }
+    }
     
     // Get direct reports for this manager
     const directReports = getDirectReports(manager.id);
@@ -200,16 +276,46 @@ export const prepareConsolidatedData = (data) => {
     
     // If there are individual reports, create a consolidated node for them
     if (individualReports.length > 0) {
-      const consolidatedNode = {
-        id: `consolidated_${manager.id}`,
-        name: '', // Empty string for name
-        title: '', // Empty string for title, removing the manager name completely
-        parentId: manager.id,
-        _directReports: individualReports,
-        isConsolidated: true
-      };
+      // Group individual reports by department
+      const reportsByDept = new Map();
       
-      consolidatedData.push(consolidatedNode);
+      individualReports.forEach(report => {
+        const deptName = report.department ? report.department.trim() : '';
+        if (deptName && deptName !== manager.department) {
+          // Different department than manager
+          if (!reportsByDept.has(deptName)) {
+            reportsByDept.set(deptName, []);
+          }
+          reportsByDept.get(deptName).push(report);
+        } else {
+          // Same department as manager or no department
+          if (!reportsByDept.has('')) {
+            reportsByDept.set('', []);
+          }
+          reportsByDept.get('').push(report);
+        }
+      });
+      
+      // Create consolidated nodes for each department group
+      reportsByDept.forEach((reports, deptName) => {
+        if (reports.length > 0) {
+          const nodeId = deptName ? 
+            `consolidated_${manager.id}_${deptName.replace(/\s+/g, '_')}` : 
+            `consolidated_${manager.id}`;
+            
+          const consolidatedNode = {
+            id: nodeId,
+            name: '',
+            title: deptName || '',
+            parentId: manager.id,
+            _directReports: reports,
+            isConsolidated: true,
+            department: deptName
+          };
+          
+          consolidatedData.push(consolidatedNode);
+        }
+      });
     }
   };
   

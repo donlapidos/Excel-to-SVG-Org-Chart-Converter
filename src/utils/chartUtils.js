@@ -15,6 +15,44 @@ export const levelColors = {
 };
 
 /**
+ * Color palette for departments
+ */
+export const departmentColors = {
+  'Marketing': '#8bc34a',     // Light green
+  'Sales': '#03a9f4',         // Light blue
+  'Engineering': '#ff5722',   // Deep orange
+  'Product': '#673ab7',       // Deep purple
+  'HR': '#2196f3',            // Blue
+  'Finance': '#009688',       // Teal
+  'Operations': '#795548',    // Brown
+  'IT': '#607d8b',            // Blue grey
+  'Customer Support': '#ffc107', // Amber
+  'Legal': '#9e9e9e',         // Grey
+  default: '#78909c'          // Blue grey lighter
+};
+
+/**
+ * Gets the color for a specific department
+ * @param {String} departmentName - Name of the department
+ * @returns {String} Color hex code
+ */
+export const getDepartmentColor = (departmentName) => {
+  if (!departmentName) return departmentColors.default;
+  
+  // Check for exact match
+  if (departmentColors[departmentName]) {
+    return departmentColors[departmentName];
+  }
+  
+  // Check for partial match
+  const key = Object.keys(departmentColors).find(
+    key => departmentName.includes(key) || key.includes(departmentName)
+  );
+  
+  return key ? departmentColors[key] : departmentColors.default;
+};
+
+/**
  * Creates and configures an org chart instance
  * @param {HTMLElement} container - DOM element to contain the chart
  * @param {Number} width - Chart width
@@ -29,8 +67,19 @@ export const createOrgChart = (container, width = 1600, height = 800) => {
     .container(container)
     .svgWidth(width)
     .svgHeight(height)
-    .nodeWidth(() => nodeWidth)
+    .nodeWidth(d => {
+      // Department nodes are wider
+      if (d.data.isDepartment) {
+        return nodeWidth * 1.2;
+      }
+      return nodeWidth;
+    })
     .nodeHeight(d => {
+      // If this is a department node
+      if (d.data.isDepartment) {
+        return nodeHeight * 0.8; // Department nodes are shorter
+      }
+      
       // If this is a consolidated node with direct reports
       if (d.data._directReports && d.data._directReports.length > 0) {
         // Calculate height based on number of direct reports
@@ -48,10 +97,15 @@ export const createOrgChart = (container, width = 1600, height = 800) => {
     .buttonContent(() => '')
     .compact(false)
     .layout('top')
-    .linkUpdate(function() {
+    .linkUpdate(function(d) {
+      // Use department colors for links between departments
+      const stroke = d.source.data.isDepartment || d.target.data.isDepartment 
+        ? "#999999" // Darker line for department connections
+        : "#c7c7c7"; // Regular line for regular connections
+
       d3.select(this)
-        .attr("stroke", "#c7c7c7")
-        .attr("stroke-width", 2);
+        .attr("stroke", stroke)
+        .attr("stroke-width", d.source.data.isDepartment || d.target.data.isDepartment ? 2.5 : 2);
     });
 };
 
@@ -61,10 +115,64 @@ export const createOrgChart = (container, width = 1600, height = 800) => {
  * @returns {String} HTML content for the node
  */
 export const defaultNodeContent = (d) => {
+  // Handle department nodes
+  if (d.data.isDepartment) {
+    const departmentColor = getDepartmentColor(d.data.name);
+    
+    return `
+      <div style="
+        height: 100%;
+        width: 100%;
+        border-radius: 8px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 3px 10px rgba(0, 0, 0, 0.15);
+        border: 2px solid ${departmentColor};
+        background-color: ${departmentColor}10; /* 10% opacity */
+      ">
+        <div style="
+          background-color: ${departmentColor};
+          padding: 8px 16px;
+          text-align: center;
+        ">
+          <div style="
+            color: white;
+            font-size: 16px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          ">${d.data.name} Department</div>
+        </div>
+        <div style="
+          padding: 10px 16px;
+          flex: 1;
+          text-align: center;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        ">
+          <div style="
+            font-size: 13px;
+            color: #555;
+            font-style: italic;
+          ">Departmental Unit</div>
+        </div>
+      </div>
+    `;
+  }
+  
   const directReports = d.data._directReports || [];
   
   // If this is a consolidated node with direct reports
   if (directReports.length > 0) {
+    // Determine if we need to show department information
+    const department = d.data.department || '';
+    const departmentColor = department ? getDepartmentColor(department) : levelColors[2];
+    
     // Create a box with stacked direct reports
     let content = `
       <div style="
@@ -76,15 +184,15 @@ export const defaultNodeContent = (d) => {
         align-items: center;
         border-radius: 8px;
         background-color: white;
-        border-top: 4px solid ${levelColors[2]};
+        border-top: 4px solid ${departmentColor};
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
         padding: 16px 12px;
         box-sizing: border-box;
         overflow: hidden;
+        ${department ? `border-left: 2px solid ${departmentColor}; border-right: 2px solid ${departmentColor};` : ''}
       ">`;
     
     // Only show the title section if title is present
-    // (We've made title empty for consolidated nodes so this section will be skipped)
     if (d.data.title) {
       content += `
         <div style="
@@ -136,6 +244,10 @@ export const defaultNodeContent = (d) => {
     return content;
   }
 
+  // Determine if this node is a manager with department information
+  const hasDepartment = d.data.department && d.data.department.trim() !== '';
+  const departmentColor = hasDepartment ? getDepartmentColor(d.data.department) : null;
+  
   // Standard node (typically a manager)
   return `
     <div style="
@@ -147,6 +259,7 @@ export const defaultNodeContent = (d) => {
       flex-direction: column;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
       border: 1px solid #e0e0e0;
+      ${hasDepartment ? `border-left: 3px solid ${departmentColor}; border-right: 3px solid ${departmentColor};` : ''}
     ">
       <div style="
         background-color: ${levelColors[d.depth] || levelColors.default};
@@ -168,6 +281,7 @@ export const defaultNodeContent = (d) => {
         text-align: center;
         background-color: white;
         display: flex;
+        flex-direction: column;
         align-items: center;
         justify-content: center;
       ">
@@ -175,7 +289,19 @@ export const defaultNodeContent = (d) => {
           font-size: 14px;
           color: #555;
           font-weight: 400;
+          ${hasDepartment ? 'margin-bottom: 6px;' : ''}
         ">${d.data.title || ''}</div>
+        
+        ${hasDepartment ? `
+          <div style="
+            font-size: 12px;
+            color: #666;
+            padding: 2px 8px;
+            background-color: ${departmentColor}15;
+            border-radius: 4px;
+            margin-top: 4px;
+          ">${d.data.department}</div>
+        ` : ''}
       </div>
     </div>
   `;
@@ -205,6 +331,75 @@ export const validateChartData = (data) => {
   const rootNode = data.find(node => !node.parentId);
   if (!rootNode) {
     return 'No root node found in the data. Make sure there is one person who does not report to anyone.';
+  }
+  
+  // Check for circular references
+  const visited = new Set();
+  const nodesInProgress = new Set();
+  
+  const hasCircularReference = (nodeId) => {
+    if (visited.has(nodeId)) return false;
+    if (nodesInProgress.has(nodeId)) return true;
+    
+    nodesInProgress.add(nodeId);
+    
+    const node = data.find(n => n.id === nodeId);
+    if (!node) {
+      nodesInProgress.delete(nodeId);
+      return false;
+    }
+    
+    // Check children (including department nodes)
+    const childNodes = data.filter(n => n.parentId === nodeId);
+    for (const child of childNodes) {
+      if (hasCircularReference(child.id)) {
+        return true;
+      }
+    }
+    
+    nodesInProgress.delete(nodeId);
+    visited.add(nodeId);
+    return false;
+  };
+  
+  if (hasCircularReference(rootNode.id)) {
+    return 'Circular reference detected in the reporting structure. Please check your data.';
+  }
+  
+  // Validate department structures
+  const departmentNodes = data.filter(node => node.isDepartment);
+  if (departmentNodes.length > 0) {
+    console.log(`Found ${departmentNodes.length} department nodes`);
+    
+    // Check if any department nodes have invalid references
+    for (const dept of departmentNodes) {
+      // Check if department head exists
+      if (dept.departmentHead) {
+        const headExists = data.some(node => node.id === dept.departmentHead);
+        if (!headExists) {
+          console.warn(`Department ${dept.name} references non-existent department head ID: ${dept.departmentHead}`);
+        }
+      }
+      
+      // Check if parent node exists
+      if (dept.parentId) {
+        const parentExists = data.some(node => node.id === dept.parentId);
+        if (!parentExists) {
+          console.warn(`Department ${dept.name} references non-existent parent ID: ${dept.parentId}`);
+        }
+      }
+      
+      // Check if all department members exist
+      if (dept.departmentMembers && Array.isArray(dept.departmentMembers)) {
+        const missingMembers = dept.departmentMembers.filter(
+          memberId => !data.some(node => node.id === memberId)
+        );
+        
+        if (missingMembers.length > 0) {
+          console.warn(`Department ${dept.name} references ${missingMembers.length} non-existent member IDs`);
+        }
+      }
+    }
   }
   
   return null;
